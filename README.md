@@ -10,6 +10,17 @@ Airlock is not a general multi-agent framework. Git is the shared memory, the
 reviewer is read-only, and the developer stays in control from their existing
 terminal workflow.
 
+## Project independence
+
+Airlock is an independent open-source project. It is not affiliated with,
+endorsed by, sponsored by, or officially connected to Anthropic, OpenAI,
+Google, or any other agent-provider vendor. Claude, Claude Code, Codex, Gemini,
+and other product names and trademarks belong to their respective owners.
+
+Airlock invokes provider CLIs that users install and configure separately. It
+does not redistribute those CLIs, grant access to their services, or replace
+their licenses, terms, subscriptions, or acceptable-use policies.
+
 ## Planned v0.1 workflow
 
 ```text
@@ -51,4 +62,5 @@ and [`docs/architecture_CN.md`](docs/architecture_CN.md).
 
 ## License
 
-MIT
+Licensed under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for
+project attribution. This repository does not provide legal advice.

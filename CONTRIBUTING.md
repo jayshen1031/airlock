@@ -13,3 +13,7 @@ a GitHub issue before implementation.
 5. Push all commits before ending the session.
 
 Never commit credentials, `.airlock/runs/`, `.sandbox/`, or provider transcripts.
+
+By contributing, you agree that your contributions are licensed under the
+Apache License 2.0. Report suspected vulnerabilities privately as described in
+[`SECURITY.md`](SECURITY.md), not through public issues.
