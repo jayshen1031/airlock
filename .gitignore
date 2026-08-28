@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.sandbox/
+.codex/config.toml
+.airlock/runs/
+.pytest_cache/
+*.egg-info/
+build/
+dist/

@@ -1,0 +1,43 @@
+project: airlock
+project_identity:
+  schema_version: 1
+  project_scope: airlock
+  security_domain: personal
+  project_type: development
+  stack:
+  - python
+  repository_id: git@github.com:jayshen1031/airlock
+  agents:
+  - codex
+  - claude
+  - kimi
+  - qoder
+memory:
+  transport: oss-relay
+  incremental: true
+  oss_prefix: personal/airlock
+  processing: host-local-replication
+  access_mode: project
+  read_scope: project
+  write_scope: personal/airlock
+  hub_admin: false
+replication:
+  worker:
+    instance_id: ${MEMHUB_PROJECTION_INSTANCE:-}
+  topology: host-local
+  neo4j:
+    uri: ${REPLICATION_NEO4J_URI}
+    user: ${REPLICATION_NEO4J_USER:-neo4j}
+    password: ${REPLICATION_NEO4J_PASSWORD}
+code_index:
+  provider: gitnexus
+  mode: local-query
+  persist_impact_observations: true
+  publish_full_graph: false
+  include_source: false
+knowledge:
+  catalog: jay-knowledge-base
+  proposal_enabled: true
+  automatic_publish: false
+  require_human_acceptance: true
+  consume: []

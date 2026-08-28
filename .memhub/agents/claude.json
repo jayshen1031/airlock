@@ -1,0 +1,10 @@
+{
+  "agent": "claude",
+  "project_scope": "airlock",
+  "security_domain": "personal",
+  "mcp_server": "memhub",
+  "mcp_url": null,
+  "memory_submit": "~/.local/bin/commit-memory-to-oss.sh",
+  "memory_processing": "host-local-replication",
+  "project_config": "configs/memhub.yaml"
+}

@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "airlock-agent"
+version = "0.0.0"
+description = "Terminal-first cross-agent coding review and repair loop"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Jashen" }]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/jayshen1031/airlock"
+Repository = "https://github.com/jayshen1031/airlock"
+Issues = "https://github.com/jayshen1031/airlock/issues"
