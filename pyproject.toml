@@ -8,11 +8,11 @@ version = "0.0.0"
 description = "Terminal-first cross-agent coding review and repair loop"
 readme = "README.md"
 requires-python = ">=3.11"
-license = "MIT"
+license = "Apache-2.0"
 authors = [{ name = "Jashen" }]
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
-  "License :: OSI Approved :: MIT License",
+  "License :: OSI Approved :: Apache Software License",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
 ]
@@ -21,3 +21,4 @@ classifiers = [
 Homepage = "https://github.com/jayshen1031/airlock"
 Repository = "https://github.com/jayshen1031/airlock"
 Issues = "https://github.com/jayshen1031/airlock/issues"
+Security = "https://github.com/jayshen1031/airlock/security/advisories/new"
