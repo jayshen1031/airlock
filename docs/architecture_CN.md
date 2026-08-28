@@ -137,7 +137,10 @@ stderr。测试失败默认进入 repair；若没有 writer 或 repair 未授权
 4. 检测到写入时将 run 标记为 failed，并报告变化，不自动删除或 reset；
 5. 后续可加入 OS sandbox，但不作为首个跨平台版本的前置条件。
 
-仅靠 Git diff 无法发现所有 ignored-file 写入，因此 v0.1 文档必须陈述该限制。
+fingerprint 覆盖 tracked、untracked、ignored 配置和既有 `.airlock` artifacts。为了避免
+扫描庞大或持续变化的本机输出，`.git`、`.sandbox`、`.venv`、Python caches、build、
+dist 和 `*.egg-info` 明确排除。v0.1 的检测是 provider 权限限制后的第二道防线，不等同
+于 OS 级不可写挂载；需要更强对抗性隔离的环境应使用容器或未来的 OS sandbox。
 
 ## 5. Stuck detection
 

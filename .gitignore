@@ -4,6 +4,7 @@ __pycache__/
 .sandbox/
 .codex/config.toml
 .airlock/runs/
+.airlock-recovery-*.json
 .pytest_cache/
 *.egg-info/
 build/

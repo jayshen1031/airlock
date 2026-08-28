@@ -21,29 +21,47 @@ Airlock invokes provider CLIs that users install and configure separately. It
 does not redistribute those CLIs, grant access to their services, or replace
 their licenses, terms, subscriptions, or acceptable-use policies.
 
-## Planned v0.1 workflow
+## v0.1 review-only workflow
 
 ```text
-task
-  -> writer changes the repository
-  -> configured test command
-  -> reviewer inspects the Git diff (read-only)
-  -> approve: done
-  -> reject: structured findings -> writer repairs -> review again
+writer changes the repository
+  -> airlock captures tracked, staged, and untracked changes
+  -> an independent reviewer inspects them in read-only mode
+  -> approve / reject with findings / blocked
+  -> local, inspectable run artifacts
 ```
 
-The first useful command will be review-only:
+Requires Python 3.11+ and at least one authenticated provider CLI (`codex` or
+`claude`) on `PATH`.
 
 ```bash
-airlock review --reviewer claude
+python -m pip install -e .
+
+airlock review \
+  --reviewer claude \
+  --task "Refactor authentication without changing token semantics"
 ```
 
-The bounded automation layer will follow:
+Use Codex as the independent reviewer instead:
 
 ```bash
-airlock run --writer codex --reviewer claude --max-iterations 3 \
-  "refactor the authentication module"
+airlock review --reviewer codex --task "Fix issue #42"
 ```
+
+Exit codes are stable for scripting:
+
+- `0`: approved;
+- `1`: rejected with actionable findings;
+- `2`: blocked, including provider failure or malformed output;
+- `3`: Airlock/Git error or detected reviewer workspace mutation.
+
+Each invocation writes task, captured change material, schema, state, provider
+metadata, and the validated verdict under `.airlock/runs/<run-id>/`. These run
+artifacts are local and ignored by Git.
+
+Airlock v0.1 does not attach to existing terminal panes, run an automatic test
+gate, repair changes, or loop autonomously. Those capabilities remain separate,
+bounded follow-up work.
 
 ## Product principles
 
@@ -54,11 +72,13 @@ airlock run --writer codex --reviewer claude --max-iterations 3 \
 - Make every iteration visible, resumable, and bounded.
 - Start with Claude Code and Codex CLI; add providers only when demanded.
 
-## Status
+## Design and knowledge boundaries
 
-Airlock is in project bootstrap. The product requirements and architecture are
-defined in [`docs/product-requirements_CN.md`](docs/product-requirements_CN.md)
-and [`docs/architecture_CN.md`](docs/architecture_CN.md).
+The product requirements and architecture are defined in
+[`docs/product-requirements_CN.md`](docs/product-requirements_CN.md) and
+[`docs/architecture_CN.md`](docs/architecture_CN.md). The repository is the
+source of truth for code and project decisions; ADR 0001 defines how optional
+MemHub/Nexus knowledge governance remains outside the standalone runtime.
 
 ## License
 
