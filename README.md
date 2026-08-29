@@ -34,8 +34,49 @@ writer changes the repository
 Requires Python 3.11+ and at least one authenticated provider CLI (`codex` or
 `claude`) on `PATH`.
 
+## Installation
+
+Install directly from GitHub with `pipx`:
+
 ```bash
-python -m pip install -e .
+pipx install "git+https://github.com/jayshen1031/airlock.git"
+```
+
+For an editable contributor installation, clone the repository and use the
+current directory. This is portable across paths and machines:
+
+```bash
+git clone https://github.com/jayshen1031/airlock.git
+cd airlock
+pipx install --editable .
+```
+
+Without `pipx`, use a virtual environment:
+
+```bash
+git clone https://github.com/jayshen1031/airlock.git
+cd airlock
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --editable .
+```
+
+On Windows, activate the environment with `.venv\Scripts\activate` instead.
+Confirm Airlock and the provider CLIs are available:
+
+```bash
+airlock --help
+claude --version
+codex --version
+```
+
+## Usage
+
+Run Airlock from the Git repository you want to review, not from the Airlock
+source directory:
+
+```bash
+cd your-project
 
 airlock review \
   --reviewer claude \
