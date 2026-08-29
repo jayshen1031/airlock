@@ -77,6 +77,10 @@ CREATED
 
 所有转换写入 run store。任何异常不得隐式转换为 APPROVED。
 
+当前同步 `repair` 命令将父循环状态写入一个 run，并保留每次 reviewer 子 run 的路径及
+writer invocation 元数据。`Ctrl-C` 记录为 canceled；跨进程 resume/cancel 需要后续的
+锁、租约与进程身份设计，不在同步 v0.2 控制器中伪实现。
+
 ### Agent adapter
 
 最小接口：

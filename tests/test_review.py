@@ -8,7 +8,14 @@ from pathlib import Path
 import pytest
 
 from airlock.adapters.base import AgentAdapter
-from airlock.models import AgentRequest, AgentResult, Verdict
+from airlock.models import (
+    AgentRequest,
+    AgentResult,
+    Finding,
+    ReviewResult,
+    Severity,
+    Verdict,
+)
 from airlock.review import ReviewerMutationError, build_prompt, review_repository
 
 
@@ -280,6 +287,26 @@ def test_test_gate_active_run_deletion_uses_blocked_recovery(
 
 def test_prompt_marks_absent_test_gate() -> None:
     assert "No test gate was configured" in build_prompt("task", "diff")
+
+
+def test_repair_verification_prompt_allows_reverted_rejected_change() -> None:
+    prior = ReviewResult(
+        Verdict.REJECT,
+        "regression",
+        (
+            Finding(
+                Severity.HIGH,
+                "addition became subtraction",
+                "calc.py",
+                2,
+                "restore addition",
+            ),
+        ),
+    )
+    prompt = build_prompt("restore add", "(no tracked diff)\n", prior_review=prior)
+    assert "repair verification" in prompt
+    assert "reverted a rejected change back to HEAD" in prompt
+    assert "addition became subtraction" in prompt
 
 
 def test_reviewer_mutation_fails_without_reverting(tmp_path: Path) -> None:

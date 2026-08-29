@@ -49,3 +49,32 @@ def test_cli_prints_recovery_artifact(monkeypatch, capsys, tmp_path: Path) -> No
     )
     assert cli.main(["review", "--reviewer", "codex"]) == cli.EXIT_BLOCKED
     assert f"Artifacts: {recovery}" in capsys.readouterr().out
+
+
+def test_cli_repair_routes_writer_and_reviewer(monkeypatch) -> None:
+    captured = {}
+
+    def fake_repair(**kwargs):
+        captured.update(kwargs)
+        return ReviewResult(Verdict.APPROVE, "clean"), Store()
+
+    monkeypatch.setattr(cli, "repair_repository", fake_repair)
+    assert (
+        cli.main(
+            [
+                "repair",
+                "--writer",
+                "codex",
+                "--reviewer",
+                "claude",
+                "--task",
+                "fix it",
+                "--max-iterations",
+                "2",
+            ]
+        )
+        == cli.EXIT_APPROVED
+    )
+    assert captured["writer"].executable == "codex"
+    assert captured["reviewer"].executable == "claude"
+    assert captured["max_iterations"] == 2

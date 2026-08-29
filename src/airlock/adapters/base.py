@@ -11,7 +11,9 @@ from airlock.models import AgentRequest, AgentResult
 
 
 class ProviderError(RuntimeError):
-    pass
+    def __init__(self, message: str, evidence: dict[str, object] | None = None) -> None:
+        super().__init__(message)
+        self.evidence = evidence or {"error": message}
 
 
 class AgentAdapter(ABC):
@@ -26,7 +28,19 @@ class AgentAdapter(ABC):
 
     def run(self, request: AgentRequest) -> AgentResult:
         if not self.available():
-            raise ProviderError(f"provider executable not found: {self.executable}")
+            message = f"provider executable not found: {self.executable}"
+            raise ProviderError(
+                message,
+                {
+                    "command": [self.executable],
+                    "exit_code": None,
+                    "duration_seconds": 0.0,
+                    "timed_out": False,
+                    "stderr": "",
+                    "output": "",
+                    "error": message,
+                },
+            )
         command = self.command(request)
         started = time.monotonic()
         try:
@@ -41,8 +55,19 @@ class AgentAdapter(ABC):
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
+            duration = time.monotonic() - started
+            message = f"{self.executable} timed out after {request.timeout_seconds:g}s"
             raise ProviderError(
-                f"{self.executable} timed out after {request.timeout_seconds:g}s"
+                message,
+                {
+                    "command": command,
+                    "exit_code": None,
+                    "duration_seconds": duration,
+                    "timed_out": True,
+                    "stderr": exc.stderr or "",
+                    "output": exc.stdout or "",
+                    "error": message,
+                },
             ) from exc
         duration = time.monotonic() - started
         result = AgentResult(
@@ -54,7 +79,17 @@ class AgentAdapter(ABC):
         )
         if result.exit_code != 0:
             detail = result.stderr.strip() or result.output or "no provider output"
+            message = f"{self.executable} exited with {result.exit_code}: {detail}"
             raise ProviderError(
-                f"{self.executable} exited with {result.exit_code}: {detail}"
+                message,
+                {
+                    "command": list(result.command),
+                    "exit_code": result.exit_code,
+                    "duration_seconds": result.duration_seconds,
+                    "timed_out": False,
+                    "stderr": result.stderr,
+                    "output": result.output,
+                    "error": message,
+                },
             )
         return result

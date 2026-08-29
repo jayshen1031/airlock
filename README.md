@@ -21,7 +21,7 @@ Airlock invokes provider CLIs that users install and configure separately. It
 does not redistribute those CLIs, grant access to their services, or replace
 their licenses, terms, subscriptions, or acceptable-use policies.
 
-## v0.1 review-only workflow
+## Review and repair workflows
 
 ```text
 writer changes the repository
@@ -47,6 +47,22 @@ Use Codex as the independent reviewer instead:
 ```bash
 airlock review --reviewer codex --task "Fix issue #42"
 ```
+
+Run an explicitly authorized, bounded repair loop:
+
+```bash
+airlock repair \
+  --writer codex \
+  --reviewer claude \
+  --max-iterations 3 \
+  --task "Fix issue #42 without changing the public API"
+```
+
+Airlock reviews first, passes only structured findings to the writer, then
+re-runs the configured test gate and independent review. It stops on approval,
+provider blockage, repeated findings, no workspace progress, a repeated prior
+workspace state, forbidden Git revision changes, or the iteration limit. It
+never commits, pushes, merges, resets, or attaches to existing terminal panes.
 
 To run one explicit test command before review, commit `.airlock/config.toml`:
 
@@ -77,8 +93,9 @@ Each invocation writes task, captured change material, schema, state, provider
 metadata, and the validated verdict under `.airlock/runs/<run-id>/`. These run
 artifacts are local and ignored by Git.
 
-Airlock v0.1 does not attach to existing terminal panes, repair changes, or loop
-autonomously. Those capabilities remain separate, bounded follow-up work.
+Airlock does not attach to existing terminal panes or run an unbounded autonomous
+loop. Cross-process resume and external cancellation remain follow-up work;
+interrupting the synchronous command records a canceled state.
 
 ## Product principles
 

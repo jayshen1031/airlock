@@ -9,6 +9,7 @@ from pathlib import Path
 from airlock.adapters import ClaudeAdapter, CodexAdapter, ProviderError
 from airlock.git_workspace import GitWorkspaceError
 from airlock.models import ReviewResult, Verdict
+from airlock.repair import repair_repository
 from airlock.review import ReviewerMutationError, review_repository
 
 
@@ -33,6 +34,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     review.add_argument("--cwd", type=Path, default=Path.cwd())
     review.add_argument("--timeout", type=float, default=600)
+    repair = subcommands.add_parser(
+        "repair", help="review and run a bounded findings-driven repair loop"
+    )
+    repair.add_argument("--writer", choices=("claude", "codex"), required=True)
+    repair.add_argument("--reviewer", choices=("claude", "codex"), required=True)
+    repair.add_argument("--task", required=True)
+    repair.add_argument("--cwd", type=Path, default=Path.cwd())
+    repair.add_argument("--timeout", type=float, default=600)
+    repair.add_argument("--max-iterations", type=int, default=3)
     return parser
 
 
@@ -53,12 +63,22 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     adapters = {"claude": ClaudeAdapter, "codex": CodexAdapter}
     try:
-        result, store = review_repository(
-            repository=args.cwd,
-            task=args.task,
-            adapter=adapters[args.reviewer](),
-            timeout_seconds=args.timeout,
-        )
+        if args.command == "review":
+            result, store = review_repository(
+                repository=args.cwd,
+                task=args.task,
+                adapter=adapters[args.reviewer](),
+                timeout_seconds=args.timeout,
+            )
+        else:
+            result, store = repair_repository(
+                repository=args.cwd,
+                task=args.task,
+                writer=adapters[args.writer](),
+                reviewer=adapters[args.reviewer](),
+                max_iterations=args.max_iterations,
+                timeout_seconds=args.timeout,
+            )
     except (
         GitWorkspaceError,
         ProviderError,

@@ -21,6 +21,11 @@ class Severity(str, Enum):
     LOW = "low"
 
 
+class AgentMode(str, Enum):
+    READ = "read"
+    WRITE = "write"
+
+
 @dataclass(frozen=True)
 class Finding:
     severity: Severity
@@ -117,8 +122,9 @@ class ReviewResult:
 class AgentRequest:
     prompt: str
     cwd: Path
-    schema_path: Path
+    schema_path: Path | None
     timeout_seconds: float
+    mode: AgentMode = AgentMode.READ
 
 
 @dataclass(frozen=True)
