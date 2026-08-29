@@ -67,6 +67,16 @@ class GitWorkspace:
     def head(self) -> str:
         return self._git(self.root, "rev-parse", "HEAD").strip()
 
+    def revision_identity(self) -> str:
+        ref = self._git(
+            self.root,
+            "symbolic-ref",
+            "--quiet",
+            "HEAD",
+            check=False,
+        ).strip()
+        return f"{self.head()}\n{ref or '(detached)'}"
+
     def status(self) -> str:
         return self._git(
             self.root,

@@ -20,6 +20,7 @@ class RunStore:
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         self.run_id = f"{timestamp}-{uuid.uuid4().hex[:8]}"
         self.path = repository / ".airlock" / "runs" / self.run_id
+        self.recovery_path: Path | None = None
         self.path.mkdir(parents=True, exist_ok=False)
         directory_stat = os.lstat(self.path)
         self._directory_identity = (directory_stat.st_dev, directory_stat.st_ino)
@@ -91,9 +92,18 @@ class RunStore:
 
     def write_recovery_json(self, value: Any) -> Path:
         """Persist failure evidence through the trusted repository descriptor."""
-        name = f".airlock-recovery-{self.run_id}.json"
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-        descriptor = os.open(name, flags, 0o600, dir_fd=self._repository_fd)
+        descriptor = None
+        name = ""
+        for _ in range(10):
+            name = f".airlock-recovery-{self.run_id}-{uuid.uuid4().hex}.json"
+            try:
+                descriptor = os.open(name, flags, 0o600, dir_fd=self._repository_fd)
+            except FileExistsError:
+                continue
+            break
+        if descriptor is None:
+            raise RunStoreIntegrityError("could not allocate a recovery artifact")
         try:
             data = (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode()
             while data:
@@ -102,4 +112,9 @@ class RunStore:
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
-        return self.path.parents[2] / name
+        self.recovery_path = self.path.parents[2] / name
+        return self.recovery_path
+
+    @property
+    def artifact_path(self) -> Path:
+        return self.recovery_path or self.path

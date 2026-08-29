@@ -68,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
     ) as exc:
         print(f"airlock: {exc}", file=sys.stderr)
         return EXIT_ERROR
-    _print_result(result, store.path)
+    _print_result(result, store.artifact_path)
     if result.verdict is Verdict.APPROVE:
         return EXIT_APPROVED
     if result.verdict is Verdict.REJECT:

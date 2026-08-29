@@ -2,13 +2,14 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from airlock.adapters.base import AgentAdapter
 from airlock.models import AgentRequest, AgentResult, Verdict
-from airlock.review import ReviewerMutationError, review_repository
+from airlock.review import ReviewerMutationError, build_prompt, review_repository
 
 
 def git(repo: Path, *args: str) -> None:
@@ -40,6 +41,7 @@ class FakeAdapter(AgentAdapter):
         return ["fake"]
 
     def run(self, request: AgentRequest) -> AgentResult:
+        self.request = request
         if self.mutate:
             (request.cwd / "file.py").write_text("mutated = True\n")
         return AgentResult(json.dumps(self.payload), "", 0, 0.1, ("fake",))
@@ -59,6 +61,12 @@ class IgnoredFileMutatingAdapter(FakeAdapter):
 class EmptyDirectoryMutatingAdapter(FakeAdapter):
     def run(self, request: AgentRequest) -> AgentResult:
         (request.cwd / "unexpected-empty-directory").mkdir()
+        return super().run(request)
+
+
+class RevisionMutatingAdapter(FakeAdapter):
+    def run(self, request: AgentRequest) -> AgentResult:
+        git(request.cwd, "commit", "--allow-empty", "-qm", "reviewer mutation")
         return super().run(request)
 
 
@@ -90,6 +98,188 @@ def test_review_writes_auditable_result(tmp_path: Path) -> None:
     assert result.verdict is Verdict.APPROVE
     assert json.loads((store.path / "review.json").read_text())["verdict"] == "approve"
     assert json.loads((store.path / "state.json").read_text())["status"] == "approve"
+
+
+def test_configured_test_gate_writes_evidence_and_reaches_reviewer(
+    tmp_path: Path,
+) -> None:
+    repo = repository(tmp_path)
+    config = repo / ".airlock" / "config.toml"
+    config.parent.mkdir()
+    config.write_text(
+        f'[gates.tests]\ncommand = ["{sys.executable}", "-c", "print(123)"]\n'
+    )
+    adapter = FakeAdapter(
+        {"verdict": "approve", "summary": "clean", "findings": []}
+    )
+    result, store = review_repository(repo, "change value", adapter)
+    evidence = json.loads((store.path / "test-result.json").read_text())
+    assert result.verdict is Verdict.APPROVE
+    assert evidence["passed"] is True
+    assert "123" in evidence["stdout"]
+    assert "Test gate evidence" in adapter.request.prompt
+    assert "123" in adapter.request.prompt
+
+
+def test_failed_test_gate_overrides_false_approval(tmp_path: Path) -> None:
+    repo = repository(tmp_path)
+    config = repo / ".airlock" / "config.toml"
+    config.parent.mkdir()
+    config.write_text(
+        f'[gates.tests]\ncommand = ["{sys.executable}", "-c", "raise SystemExit(4)"]\n'
+    )
+    result, store = review_repository(
+        repo,
+        "change value",
+        FakeAdapter({"verdict": "approve", "summary": "clean", "findings": []}),
+    )
+    assert result.verdict is Verdict.REJECT
+    assert result.findings[0].severity.value == "high"
+    assert json.loads((store.path / "state.json").read_text())["status"] == "reject"
+
+
+def test_test_infrastructure_failure_overrides_false_approval(tmp_path: Path) -> None:
+    repo = repository(tmp_path)
+    config = repo / ".airlock" / "config.toml"
+    config.parent.mkdir()
+    config.write_text(
+        '[gates.tests]\ncommand = ["airlock-command-that-does-not-exist"]\n'
+    )
+    result, _ = review_repository(
+        repo,
+        "change value",
+        FakeAdapter({"verdict": "approve", "summary": "clean", "findings": []}),
+    )
+    assert result.verdict is Verdict.BLOCKED
+
+
+def test_malformed_test_gate_config_is_auditable_blocked_result(
+    tmp_path: Path,
+) -> None:
+    repo = repository(tmp_path)
+    config = repo / ".airlock" / "config.toml"
+    config.parent.mkdir()
+    config.write_text('[gates.tests]\ncommand = "pytest"\n')
+    adapter = FakeAdapter(
+        {"verdict": "approve", "summary": "clean", "findings": []}
+    )
+    result, store = review_repository(repo, "change value", adapter)
+    assert result.verdict is Verdict.BLOCKED
+    assert not hasattr(adapter, "request")
+    assert (store.path / "task.md").exists()
+    assert (store.path / "diff.patch").exists()
+    assert json.loads((store.path / "review.json").read_text())["verdict"] == "blocked"
+    assert json.loads((store.path / "state.json").read_text())["status"] == "blocked"
+
+
+def test_non_utf8_test_gate_config_is_auditable_blocked_result(
+    tmp_path: Path,
+) -> None:
+    repo = repository(tmp_path)
+    config = repo / ".airlock" / "config.toml"
+    config.parent.mkdir()
+    config.write_bytes(b"\xff\xfe")
+    adapter = FakeAdapter(
+        {"verdict": "approve", "summary": "clean", "findings": []}
+    )
+    result, store = review_repository(repo, "change value", adapter)
+    assert result.verdict is Verdict.BLOCKED
+    assert not hasattr(adapter, "request")
+    assert json.loads((store.path / "review.json").read_text())["verdict"] == "blocked"
+    assert json.loads((store.path / "state.json").read_text())["status"] == "blocked"
+
+
+def test_oversized_test_gate_config_is_auditable_blocked_result(
+    tmp_path: Path,
+) -> None:
+    from airlock.test_gate import MAX_CONFIG_BYTES
+
+    repo = repository(tmp_path)
+    config = repo / ".airlock" / "config.toml"
+    config.parent.mkdir()
+    config.write_bytes(b"#" * (MAX_CONFIG_BYTES + 1))
+    adapter = FakeAdapter(
+        {"verdict": "approve", "summary": "clean", "findings": []}
+    )
+    result, store = review_repository(repo, "change value", adapter)
+    assert result.verdict is Verdict.BLOCKED
+    assert not hasattr(adapter, "request")
+    assert json.loads((store.path / "review.json").read_text())["verdict"] == "blocked"
+    assert json.loads((store.path / "state.json").read_text())["status"] == "blocked"
+
+
+def test_test_gate_workspace_mutation_blocks_review(tmp_path: Path) -> None:
+    repo = repository(tmp_path)
+    config = repo / ".airlock" / "config.toml"
+    config.parent.mkdir()
+    code = "from pathlib import Path; Path('file.py').write_text('changed by tests' + chr(10))"
+    config.write_text(
+        f'[gates.tests]\ncommand = ["{sys.executable}", "-c", "{code}"]\n'
+    )
+    adapter = FakeAdapter(
+        {"verdict": "approve", "summary": "clean", "findings": []}
+    )
+    result, store = review_repository(repo, "change value", adapter)
+    assert result.verdict is Verdict.BLOCKED
+    assert not hasattr(adapter, "request")
+    assert (repo / "file.py").read_text() == "changed by tests\n"
+    state = json.loads((store.path / "state.json").read_text())
+    assert state["reason"] == "test gate mutated the workspace"
+
+
+def test_test_gate_empty_commit_blocks_review(tmp_path: Path) -> None:
+    repo = repository(tmp_path)
+    config = repo / ".airlock" / "config.toml"
+    config.parent.mkdir()
+    config.write_text(
+        '[gates.tests]\ncommand = ["git", "commit", "--allow-empty", "-m", "gate"]\n'
+    )
+    adapter = FakeAdapter(
+        {"verdict": "approve", "summary": "clean", "findings": []}
+    )
+    result, store = review_repository(repo, "change value", adapter)
+    assert result.verdict is Verdict.BLOCKED
+    assert not hasattr(adapter, "request")
+    state = json.loads((store.path / "state.json").read_text())
+    assert state["reason"] == "test gate mutated the workspace"
+
+
+def test_test_gate_active_run_deletion_uses_blocked_recovery(
+    tmp_path: Path,
+) -> None:
+    repo = repository(tmp_path)
+    deleter = repo / "delete-run.py"
+    deleter.write_text(
+        "import shutil\n"
+        "from pathlib import Path\n"
+        "for path in Path('.airlock/runs').iterdir():\n"
+        "    Path(f'.airlock-recovery-{path.name}.json').write_text('occupied')\n"
+        "    shutil.rmtree(path)\n"
+    )
+    config = repo / ".airlock" / "config.toml"
+    config.parent.mkdir()
+    config.write_text(
+        f'[gates.tests]\ncommand = ["{sys.executable}", "{deleter}"]\n'
+    )
+    adapter = FakeAdapter(
+        {"verdict": "approve", "summary": "clean", "findings": []}
+    )
+    result, store = review_repository(repo, "change value", adapter)
+    assert result.verdict is Verdict.BLOCKED
+    assert not hasattr(adapter, "request")
+    assert store.recovery_path is not None
+    assert store.artifact_path == store.recovery_path
+    recovery = json.loads(store.recovery_path.read_text())
+    assert recovery["state"]["status"] == "blocked"
+    assert recovery["review"]["verdict"] == "blocked"
+    assert recovery["test_result"]["exit_code"] == 0
+    predictable = repo / f".airlock-recovery-{store.run_id}.json"
+    assert predictable.read_text() == "occupied"
+    assert store.recovery_path != predictable
+
+
+def test_prompt_marks_absent_test_gate() -> None:
+    assert "No test gate was configured" in build_prompt("task", "diff")
 
 
 def test_reviewer_mutation_fails_without_reverting(tmp_path: Path) -> None:
@@ -151,6 +341,32 @@ def test_reviewer_creation_of_empty_directory_is_detected(tmp_path: Path) -> Non
             ),
         )
     assert (repo / "unexpected-empty-directory").is_dir()
+
+
+def test_reviewer_revision_mutation_is_detected(tmp_path: Path) -> None:
+    repo = repository(tmp_path)
+    before = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    with pytest.raises(ReviewerMutationError):
+        review_repository(
+            repo,
+            "change value",
+            RevisionMutatingAdapter(
+                {"verdict": "approve", "summary": "clean", "findings": []}
+            ),
+        )
+    assert subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() != before
 
 
 def test_active_run_deletion_uses_recovery_artifact(tmp_path: Path) -> None:

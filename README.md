@@ -48,6 +48,24 @@ Use Codex as the independent reviewer instead:
 airlock review --reviewer codex --task "Fix issue #42"
 ```
 
+To run one explicit test command before review, commit `.airlock/config.toml`:
+
+```toml
+[gates.tests]
+command = ["python", "-m", "pytest", "-q"]
+timeout_seconds = 300
+```
+
+The command is executed directly without a shell, is terminated at the timeout,
+and its bounded stdout/stderr are stored in `test-result.json` and supplied to
+the reviewer. A failed test can never produce approval; timeout or launch
+failure produces a blocked result. If the command changes auditable workspace
+state, Airlock leaves the changes intact and blocks before reviewer invocation.
+Malformed gate configuration also produces an auditable blocked result. If the
+file is absent, Airlock retains the review-only workflow.
+
+Configuration is limited to 64 KiB, and `timeout_seconds` must not exceed 3600.
+
 Exit codes are stable for scripting:
 
 - `0`: approved;
@@ -59,9 +77,8 @@ Each invocation writes task, captured change material, schema, state, provider
 metadata, and the validated verdict under `.airlock/runs/<run-id>/`. These run
 artifacts are local and ignored by Git.
 
-Airlock v0.1 does not attach to existing terminal panes, run an automatic test
-gate, repair changes, or loop autonomously. Those capabilities remain separate,
-bounded follow-up work.
+Airlock v0.1 does not attach to existing terminal panes, repair changes, or loop
+autonomously. Those capabilities remain separate, bounded follow-up work.
 
 ## Product principles
 
