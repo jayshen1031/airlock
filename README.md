@@ -70,6 +70,45 @@ claude --version
 codex --version
 ```
 
+### Ubuntu and Debian (PEP 668)
+
+Recent Ubuntu and Debian releases may reject a system-level `pip install` with
+an `externally-managed-environment` error. Do not work around this with
+`--break-system-packages`; install Airlock as an isolated application instead.
+
+When `sudo` is available:
+
+```bash
+sudo apt update
+sudo apt install -y pipx
+pipx ensurepath
+```
+
+Start a new login shell, then install Airlock:
+
+```bash
+pipx install "git+https://github.com/jayshen1031/airlock.git"
+```
+
+Without `sudo`, create a persistent user-owned virtual environment (Python's
+`venv` module must already be available):
+
+```bash
+python3 -m venv "$HOME/.local/share/airlock-venv"
+"$HOME/.local/share/airlock-venv/bin/pip" install \
+  "git+https://github.com/jayshen1031/airlock.git"
+```
+
+Add its executable directory to your shell profile (for example, `~/.bashrc`
+or `~/.profile`) and start a new login shell:
+
+```bash
+export PATH="$HOME/.local/share/airlock-venv/bin:$PATH"
+```
+
+Both approaches persist across SSH sessions without modifying the operating
+system's managed Python environment.
+
 ## Usage
 
 Run Airlock from the Git repository you want to review, not from the Airlock
