@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from airlock.adapters.base import AgentAdapter
@@ -20,6 +21,7 @@ def build_prompt(
     task: str,
     material: str,
     test_result: TestResult | None = None,
+    prior_review: ReviewResult | None = None,
 ) -> str:
     test_evidence = "No test gate was configured."
     if test_result is not None:
@@ -30,6 +32,16 @@ def build_prompt(
             f"Error: {test_result.error}\n"
             f"Stdout:\n{test_result.stdout}\n"
             f"Stderr:\n{test_result.stderr}"
+        )
+    repair_evidence = "This is an initial review, not a repair verification."
+    if prior_review is not None:
+        repair_evidence = (
+            "This is a repair verification. The writer received the prior "
+            "structured findings below. Inspect the current repository and test "
+            "evidence to decide whether they are resolved. An empty current diff "
+            "may be valid when the repair reverted a rejected change back to HEAD; "
+            "it is not sufficient by itself for approval or blockage.\n"
+            + json.dumps(prior_review.to_dict(), indent=2, ensure_ascii=False)
         )
     return f"""You are the independent, read-only reviewer in Airlock.
 
@@ -52,6 +64,9 @@ Repository changes:
 
 Test gate evidence:
 {test_evidence}
+
+Repair verification evidence:
+{repair_evidence}
 """
 
 
@@ -107,6 +122,7 @@ def review_repository(
     task: str,
     adapter: AgentAdapter,
     timeout_seconds: float = 600,
+    prior_review: ReviewResult | None = None,
 ) -> tuple[ReviewResult, RunStore]:
     workspace = GitWorkspace(repository)
     store = RunStore(workspace.root)
@@ -169,8 +185,10 @@ def review_repository(
                 return _recover_test_gate_failure(store, test_result, str(exc)), store
             return result, store
     material = workspace.review_material()
-    prompt = build_prompt(task, material, test_result)
+    prompt = build_prompt(task, material, test_result, prior_review)
     store.write_text("diff.patch", material)
+    if prior_review is not None:
+        store.write_json("prior-review.json", prior_review.to_dict())
     schema_path = store.write_json("review-schema.json", REVIEW_SCHEMA)
     store.write_json(
         "state.json",

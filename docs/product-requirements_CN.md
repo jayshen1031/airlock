@@ -77,7 +77,9 @@ dogfood 入口。
 
 ### `airlock repair`
 
-读取最近一次有效 findings，调用 writer 修复；不自动无限继续。
+先对当前 workspace 执行审核，仅将 structured findings 交给 writer 修复；随后重新运行
+test gate 和独立审核。命令由用户显式触发，受 `max_iterations`、timeout、重复 findings、
+无 diff 进展和重复 workspace state 约束，不自动 commit、push、merge 或 reset。
 
 ### `airlock run`
 
