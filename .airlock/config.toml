@@ -1,0 +1,3 @@
+[gates.tests]
+command = ["python3", "-m", "pytest", "-q"]
+timeout_seconds = 120
