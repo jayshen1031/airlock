@@ -4,7 +4,7 @@
   "source_repository": "jayshen1031/airlock",
   "source_ref": "main",
   "security_domain": "personal",
-  "jira_issue": "VITA-12",
+  "jira_issue": "AIR-1",
   "documents": [
     {
       "source": "docs/product-requirements_CN.md",

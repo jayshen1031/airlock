@@ -44,6 +44,7 @@ knowledge:
 governance:
   work_tracking:
     github_repository: jayshen1031/airlock
-    jira_project_key: VITA
-    initialization_issue: VITA-12
+    jira_project_key: AIR
+    jira_project_url: https://jayshen.atlassian.net/jira/software/projects/AIR/summary
+    initialization_issue: AIR-1
   publication_manifest: configs/knowledge-publication.json

@@ -3,7 +3,9 @@
 - 文档状态：current
 - 项目：airlock
 - 安全域：personal
-- Jira 工作项：VITA-12
+- Jira 项目：Airlock (`AIR`)
+- Jira 项目地址：https://jayshen.atlassian.net/jira/software/projects/AIR/summary
+- Jira 初始化工作项：AIR-1
 - GitHub 跟踪项：#29
 
 ## 初始化完成标准
@@ -14,7 +16,7 @@ Airlock 的 MemHub 初始化只有在以下项目均通过时才算完成：
 2. 项目已在中央 ProjectStore 注册并有 active Phase。
 3. `.memhub/knowledge.yaml` 覆盖仓库拥有的持久知识，版本与中央 KnowledgeItem 一致。
 4. `configs/knowledge-publication.json` 明确列出可发布文档、知识身份和目标路径。
-5. Jira 和 GitHub 跟踪对象已经建立，初始化证据与遗留项可追踪。
+5. 与代码仓库一一对应的 Jira 项目和 GitHub 跟踪对象已经建立；不得借用其他产品项目。
 6. 允许发布的知识已进入 `jay-knowledge-base`，私有站点构建和部署均有成功证据。
 7. “提交记忆”规则包含 Jira、治理知识发布、OSS L0 收集，以及对
    `ingress → distill → consumer/ingest` 各阶段的独立验证。

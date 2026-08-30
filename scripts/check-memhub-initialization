@@ -36,7 +36,9 @@ for path in configs/memhub.yaml .memhub/knowledge.yaml configs/knowledge-publica
   fi
 done
 
-if ! grep -q 'VITA-12' configs/memhub.yaml || ! grep -q 'VITA-12' configs/knowledge-publication.json; then
+if ! grep -q 'jira_project_key: AIR' configs/memhub.yaml ||
+   ! grep -q 'initialization_issue: AIR-1' configs/memhub.yaml ||
+   ! grep -q '"jira_issue": "AIR-1"' configs/knowledge-publication.json; then
   echo "Jira initialization binding is incomplete" >&2
   exit 1
 fi
