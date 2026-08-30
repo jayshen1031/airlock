@@ -8,7 +8,8 @@
 - `access_mode`: `project`
 - Enabled clients: claude
 - Memory reads and writes are restricted to this project and security domain.
-- "提交记忆" / "commit memory" means run `~/.local/bin/commit-memory-to-oss.sh` for the current client session.
+- "提交记忆" / "commit memory" is the governed session-finalization workflow: update or create the relevant Jira work item; update and publish every affected document declared by `configs/knowledge-publication.json` to `jay-knowledge-base` and verify its private web projection; submit the current client session through the shared MemHub collector to OSS L0; then verify and report `ingress`, `distill`, and `consumer/ingest` separately.
+- Never describe `queued`, `deduplicated`, or `uploaded` as completed distill or ingest. If a stage is unavailable, preserve completed stages, record the exact pending state in Jira, and report what remains.
 - Session-close hooks publish automatically. Repeated mid-session submissions are incremental and idempotent.
 - Memory submission uses the durable spool and shared OSS L0; do not distill or write Neo4j from the foreground Agent.
 - This host's background `ingress → distill → consumer` services use local PostgreSQL and a dedicated replication Neo4j. Never use the legacy/Cognee Neo4j or another workstation's databases as the projection target.

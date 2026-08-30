@@ -1,0 +1,23 @@
+schema_version: 1
+project: airlock
+source_of_truth: git
+publishing:
+  catalog: jay-knowledge-base
+  automatic: false
+  require_human_acceptance: true
+items:
+  - knowledge_id: knowledge://airlock/product-requirements
+    title: Airlock product requirements
+    path: docs/product-requirements_CN.md
+    version: 0.2.0
+    status: accepted
+  - knowledge_id: knowledge://airlock/architecture
+    title: Airlock architecture
+    path: docs/architecture_CN.md
+    version: 0.2.0
+    status: accepted
+  - knowledge_id: knowledge://airlock/adr/0001-knowledge-and-runtime-boundaries
+    title: Airlock knowledge and runtime boundaries
+    path: docs/adr/0001-knowledge-and-runtime-boundaries.md
+    version: 1.0.0
+    status: accepted

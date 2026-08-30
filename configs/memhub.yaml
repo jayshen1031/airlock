@@ -41,3 +41,9 @@ knowledge:
   automatic_publish: false
   require_human_acceptance: true
   consume: []
+governance:
+  work_tracking:
+    github_repository: jayshen1031/airlock
+    jira_project_key: VITA
+    initialization_issue: VITA-12
+  publication_manifest: configs/knowledge-publication.json
