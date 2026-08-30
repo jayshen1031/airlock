@@ -70,6 +70,62 @@ claude --version
 codex --version
 ```
 
+## Updating an existing installation
+
+You normally do not need to uninstall Airlock first. The exact update command
+depends on how that machine installed it.
+
+For a `pipx` installation made directly from GitHub, rebuild the managed
+environment from its recorded source specification:
+
+```bash
+pipx reinstall airlock-agent
+airlock --help
+```
+
+Use `pipx list` if you need to confirm the installed package name or source.
+`reinstall` replaces only Airlock's isolated environment; it does not affect
+project repositories, `.airlock/runs/`, or the separately installed provider
+CLIs.
+
+For an editable contributor installation, update the checkout first. Editable
+installs use that checkout directly, while reinstalling refreshes package
+metadata and dependencies:
+
+```bash
+cd /absolute/path/to/airlock
+git pull --rebase
+pipx install --force --editable .
+airlock --help
+```
+
+For an editable virtual-environment installation:
+
+```bash
+cd /absolute/path/to/airlock
+git pull --rebase
+. .venv/bin/activate
+python -m pip install --upgrade --editable .
+airlock --help
+```
+
+For the persistent user-owned virtual environment shown below, reinstall the
+current GitHub source into the same environment:
+
+```bash
+"$HOME/.local/share/airlock-venv/bin/pip" install \
+  --upgrade --force-reinstall \
+  "git+https://github.com/jayshen1031/airlock.git"
+"$HOME/.local/share/airlock-venv/bin/airlock" --help
+```
+
+An explicit uninstall is only useful when changing installation method,
+removing an obsolete checkout, or repairing a broken environment. In those
+cases, remove the old installation with `pipx uninstall airlock-agent` or the
+matching environment's `python -m pip uninstall airlock-agent`, then follow the
+installation instructions above. Do not delete project `.airlock/runs/` merely
+to upgrade the CLI.
+
 ### Ubuntu and Debian (PEP 668)
 
 Recent Ubuntu and Debian releases may reject a system-level `pip install` with
