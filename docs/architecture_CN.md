@@ -18,20 +18,30 @@ writer 只接收任务、当前仓库和结构化 findings；reviewer 只接收�
 以及审核协议。默认不把 writer 的推理或 conversation history 交给 reviewer，以保留审核
 独立性。
 
+用户交互层与执行层分离：Codex、Claude 等当前 AI coding runtime 可以把用户的自然语言
+请求翻译为显式 Airlock CLI 调用，但 Airlock 不读取或继承该 runtime 的对话历史。runtime
+负责展示和总结 artifact，不得改写 verdict 语义或扩大用户授权。
+
 ## 2. Terminal 与多 pane 模型
 
 Airlock 不把 iTerm2 pane 当作 agent transport。核心 runtime 通过 provider CLI 的
 非交互入口创建受控子进程，因此不需要读取窗口标题、屏幕文本或模拟键盘输入。
 
 ```text
-iTerm2 / tmux / Warp / CI
-          |
-          v
-      airlock CLI
-          |
-          +-- run-id A / writer subprocess
-          `-- run-id A / reviewer subprocess
+User in Codex / Claude          Direct terminal / CI
+            |                           |
+            | natural-language request |
+            v                           v
+      Current AI runtime ----------> airlock CLI
+                                      |
+                                      +-- run-id A / writer subprocess
+                                      `-- run-id A / reviewer subprocess
 ```
+
+当前 AI runtime 只是调用方，不是 Airlock 的共享记忆或隐式 orchestrator。它必须把用户任务
+显式传给 CLI，并在完成后读取 `review.md` 或 `review-report.md`。若 provider 返回 blocked、
+超时、schema 错误或未真正执行，runtime 必须报告工具失败；只有所有被请求的 reviewer 都
+成功产生有效 verdict，才可称为互审完成。
 
 执行身份由 `repository root + run-id + role` 决定，与 pane 数量无关。用户可以在任意
 数量的 pane 中运行 `airlock status` 或查看 artifact，但同一 run 的状态转换由 run store
@@ -41,7 +51,10 @@ integration 只负责打开 pane、显示状态或 tail event stream，不参与
 ## 3. 组件边界
 
 ```text
-CLI
+AI runtime / direct user / CI
+ |
+ v
+CLI execution protocol
  |
  v
 Application service / loop controller
@@ -56,8 +69,9 @@ Application service / loop controller
 
 ### CLI
 
-解析 `review`、`repair`、`run` 命令和用户覆盖项，只负责展示与退出码，不承载 provider
-逻辑。
+作为 AI runtime、直接用户和 CI 共用的稳定执行协议，解析 `review`、`repair`、`run` 命令
+和用户覆盖项，只负责展示与退出码，不承载 provider 逻辑。自然语言解析属于调用它的当前
+runtime；Airlock CLI 只接收已经明确的任务、角色、权限模式和边界参数。
 
 ### Loop controller
 
