@@ -11,7 +11,7 @@ from airlock.models import ReviewResult
 REVIEW_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["verdict", "summary", "findings"],
+    "required": ["verdict", "summary", "reasonable", "findings"],
     "properties": {
         "verdict": {"type": "string", "enum": ["approve", "reject", "blocked"]},
         "summary": {"type": "string", "minLength": 1},
