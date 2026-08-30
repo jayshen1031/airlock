@@ -227,6 +227,56 @@ Use Codex as the independent reviewer instead:
 airlock review --reviewer codex --task "Fix issue #42"
 ```
 
+After installing or updating Airlock, smoke-test the Codex structured-output
+path from a Git repository:
+
+```bash
+airlock review \
+  --reviewer codex \
+  --task "Smoke-test the Codex reviewer. Report the current changes accurately."
+```
+
+A successful invocation prints its artifact directory and readable report
+path. A clean workspace can legitimately produce an approval with no findings:
+
+```text
+APPROVE
+No reviewable uncommitted changes are present.
+Artifacts: /path/to/project/.airlock/runs/<run-id>
+Readable report: /path/to/project/.airlock/runs/<run-id>/review.md
+```
+
+The human-readable `review.md` groups the result as:
+
+```markdown
+### 合理
+- Evidence-backed behavior that is correct.
+
+### 不合理
+- [HIGH] `src/example.py:42`: An actionable problem.
+
+### 建议
+- The concrete recommended repair.
+```
+
+The same verdict remains available for automation in `review.json`:
+
+```json
+{
+  "verdict": "approve",
+  "summary": "No reviewable uncommitted changes are present.",
+  "reasonable": ["The tracked and staged diffs are empty."],
+  "findings": []
+}
+```
+
+If Codex fails before review with `invalid_json_schema` and reports that
+`reasonable` is missing from `required`, the machine is running a stale Airlock
+build. Follow the update-source diagnosis above, reinstall from the current
+GitHub source, and rerun the smoke test. A provider failure is `BLOCKED`; it is
+not a review conclusion and must not be treated as one side of a completed
+cross-review.
+
 Run an explicitly authorized, bounded repair loop:
 
 ```bash
