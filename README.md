@@ -2,13 +2,15 @@
 
 **Keep the terminals. Remove the copy-paste.**
 
-Airlock is a terminal-first cross-agent coding review loop. It lets one coding
-agent implement a change and another independently review the resulting Git
-diff, then carries structured findings back into a bounded repair loop.
+Airlock is a terminal-first execution layer for cross-agent coding review. A
+developer can ask their current Codex, Claude, or other coding runtime to use
+Airlock in natural language; the runtime invokes Airlock's auditable CLI, which
+lets one agent implement a change and another independently review the Git diff
+through a bounded repair loop.
 
 Airlock is not a general multi-agent framework. Git is the shared memory, the
 reviewer is read-only, and the developer stays in control from their existing
-terminal workflow.
+AI coding runtime or terminal workflow.
 
 ## Project independence
 
@@ -33,6 +35,38 @@ writer changes the repository
 
 Requires Python 3.11+ and at least one authenticated provider CLI (`codex` or
 `claude`) on `PATH`.
+
+## Use Airlock from an AI coding runtime
+
+The primary interaction can be a natural-language request inside Codex, Claude,
+or another coding runtime. For example:
+
+> Use Airlock to review the current changes with Claude as the independent
+> reviewer. Summarize the reasonable parts, unreasonable findings, and
+> suggestions from the readable report.
+
+> Use Airlock to run a bounded repair loop for issue #42. Use Codex as writer,
+> Claude as reviewer, allow at most three repairs, and stop for my decision if
+> only low-severity findings remain.
+
+> Use Airlock to cross-review this change with Codex and Claude. Do not call it
+> complete unless both reviewers actually run successfully; a blocked provider
+> is a tool failure, not a review opinion.
+
+The current runtime should translate that request into an explicit
+`airlock review` or `airlock repair` invocation, preserve the user's task text,
+and read `review.md` or `review-report.md` back to the user. It must not:
+
+- silently expand a review request into an authorized repair;
+- reuse the current conversation as the independent reviewer's hidden context;
+- treat `BLOCKED`, malformed output, timeout, or provider failure as approval;
+- claim a cross-review completed when any requested reviewer did not execute;
+- commit, push, merge, reset, or broaden provider permissions on Airlock's
+  behalf.
+
+The CLI remains the stable execution protocol for auditability, CI, scripting,
+and runtimes that need an exact handoff boundary. Users may still invoke it
+directly when that is more convenient.
 
 ## Installation
 
@@ -208,7 +242,7 @@ export PATH="$HOME/.local/share/airlock-venv/bin:$PATH"
 Both approaches persist across SSH sessions without modifying the operating
 system's managed Python environment.
 
-## Usage
+## Direct CLI usage
 
 Run Airlock from the Git repository you want to review, not from the Airlock
 source directory:

@@ -2,16 +2,18 @@
 
 ## 1. 产品定位
 
-Airlock 是一个 **AI Coding Review Loop**：让一个 coding agent 负责实现，另一个
-agent 对 Git diff 做独立、只读、结构化审核，并将 findings 自动交回 writer 进行
-有限次数的修复与复审。
+Airlock 是一个面向 AI coding runtime 的 **Cross-Agent Review Execution Layer**：用户可在
+Codex、Claude 等当前 runtime 中用自然语言要求“用 Airlock 审查或修复”，runtime 再调用
+Airlock 的稳定 CLI 协议，让一个 coding agent 负责实现、另一个 agent 对 Git diff 做独立、
+只读、结构化审核，并将 findings 自动交回 writer 进行有限次数的修复与复审。
 
 一句话价值主张：
 
 > Keep the terminals. Remove the copy-paste.
 
-它不替代 iTerm2、Claude Code 或 Codex CLI，也不提供新的聊天界面。用户继续使用熟悉
-的 terminal session，Airlock 只替代 diff、测试结果和审核意见之间的机械传递。
+它不替代 Codex、Claude Code、iTerm2 或其他现有交互界面，也不提供新的聊天界面。用户
+通常停留在当前 AI coding runtime 中，以自然语言触发 Airlock；CLI 是 runtime 背后的
+可移植、可审计执行协议，也保留给 CI、脚本和希望直接操作终端的用户。
 
 Airlock 核心与 terminal emulator 无关，支持 iTerm2、Terminal.app、Warp、WezTerm、
 tmux、VS Code terminal 和 CI。v0.1 不识别、附着或模拟操作用户已经打开的 pane；每次
@@ -22,11 +24,12 @@ role 标识。terminal-specific pane launcher 只能作为未来可选集成，�
 
 目标用户同时使用两个以上 coding agent，典型流程是：
 
-1. 在 Codex 或 Claude 中实现任务。
-2. 把任务背景和 Git diff 复制给另一个 agent。
-3. 将审核意见复制回 writer。
-4. 修复后再次复制给 reviewer。
-5. 人工判断问题是否足够收敛并结束任务。
+1. 在 Codex 或 Claude 中描述任务，并要求当前 runtime 使用 Airlock。
+2. 当前 runtime 将原始任务映射为显式的 review 或 repair 调用。
+3. Airlock 将 Git diff、测试证据和结构化协议交给独立 reviewer。
+4. Airlock 将 findings 交回 writer，并按边界复审。
+5. 当前 runtime 读取可读报告，向用户汇报每轮合理、不合理和建议。
+6. 用户判断问题是否足够收敛并结束任务。
 
 主要痛点是重复复制粘贴、交接格式不稳定、审核轮次不可追踪，以及 reviewer 可能被
 writer 的完整对话锚定。
@@ -43,6 +46,10 @@ writer 的完整对话锚定。
 - 支持 findings 驱动的 repair loop。
 - 支持最大轮次、超时和基础 stuck detection。
 - 所有状态和 artifact 保留在本地，可被人查看和接管。
+- AI runtime 能以自然语言请求稳定映射到显式 CLI 调用，并读取可读报告回传。
+- 只有被请求的独立 reviewer 都真实执行成功，才能声称互审完成。
+- `blocked`、provider failure、timeout 或 malformed verdict 必须报告为工具失败，不得包装成
+  审查意见或批准。
 
 ## 4. 非目标
 
@@ -58,7 +65,12 @@ v0.1 不提供：
 - 自动 merge、自动 push 或绕过人工权限；
 - 替用户决定业务需求是否正确。
 
-## 5. 核心命令
+## 5. Runtime 调用契约与核心命令
+
+自然语言是用户交互层，CLI 是执行层。当前 runtime 必须保留用户原始任务与授权边界，选择
+显式的 writer/reviewer，调用以下命令，并读取 `.airlock/runs/<run-id>/review.md` 或
+`review-report.md` 汇报结果。runtime 不得因用户只要求 review 而自行升级为 repair，也不得
+把当前会话历史作为独立 reviewer 的隐藏输入。
 
 ### `airlock review`
 
@@ -147,6 +159,9 @@ v0.1 可发布需要满足：
 - repair loop 不超过配置上限；
 - 单元测试不依赖真实 provider，真实 CLI 验证作为显式 integration tests；
 - 文档能让新用户在 10 分钟内完成首次 review。
+- 用户能在 Codex 或 Claude 中仅用自然语言触发一次 Airlock review，并获得 artifact 路径与
+  可读结果。
+- 任一指定 reviewer 未执行、超时或 blocked 时，系统不会声称互审已经完成。
 
 ## 9. 后续候选能力
 
