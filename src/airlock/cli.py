@@ -57,6 +57,11 @@ def _print_result(result: ReviewResult, run_path: Path) -> None:
         if finding.suggestion:
             print(f"  Suggestion: {finding.suggestion}")
     print(f"Artifacts: {run_path}")
+    readable_report = run_path / "review-report.md"
+    if not readable_report.exists():
+        readable_report = run_path / "review.md"
+    if readable_report.exists():
+        print(f"Readable report: {readable_report}")
 
 
 def main(argv: list[str] | None = None) -> int:

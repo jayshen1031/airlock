@@ -140,8 +140,10 @@ airlock repair \
 
 Airlock reviews first, passes only structured findings to the writer, then
 re-runs the configured test gate and independent review. It stops on approval,
-provider blockage, repeated findings, no workspace progress, a repeated prior
-workspace state, forbidden Git revision changes, or the iteration limit. It
+when only low-severity findings remain, provider blockage, repeated findings,
+no workspace progress, a repeated prior workspace state, forbidden Git revision
+changes, or the iteration limit. Low-only findings produce a `minor_findings`
+state and exit code `1`; they are not silently converted to approval. Airlock
 never commits, pushes, merges, resets, or attaches to existing terminal panes.
 
 To run one explicit test command before review, commit `.airlock/config.toml`:
@@ -171,7 +173,10 @@ Exit codes are stable for scripting:
 
 Each invocation writes task, captured change material, schema, state, provider
 metadata, and the validated verdict under `.airlock/runs/<run-id>/`. These run
-artifacts are local and ignored by Git.
+artifacts are local and ignored by Git. A single review includes `review.md`.
+A repair run also includes `review-report.md`, which preserves the original
+input and presents every round as `合理`, `不合理`, and `建议`. The JSON files
+remain the machine-readable audit source.
 
 Airlock does not attach to existing terminal panes or run an unbounded autonomous
 loop. Cross-process resume and external cancellation remain follow-up work;

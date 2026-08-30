@@ -11,8 +11,8 @@ from pathlib import Path
 
 from airlock.adapters.base import AgentAdapter
 from airlock.git_workspace import GitWorkspace, GitWorkspaceError
-from airlock.models import AgentMode, AgentRequest, ReviewResult, Verdict
-from airlock.review import review_repository
+from airlock.models import AgentMode, AgentRequest, ReviewResult, Severity, Verdict
+from airlock.review import render_review_markdown, review_repository
 from airlock.run_store import RunStore, RunStoreIntegrityError
 
 
@@ -114,6 +114,7 @@ def repair_repository(
     seen_findings: set[str] = set()
     seen_progress = {_progress_fingerprint(workspace)}
     prior_review: ReviewResult | None = None
+    review_rounds: list[str] = []
     protected_artifact_paths = [store.path]
 
     def transition(status: str, **detail: object) -> None:
@@ -145,6 +146,20 @@ def repair_repository(
                     "result": review.to_dict(),
                 },
             )
+            review_rounds.append(
+                render_review_markdown(
+                    task,
+                    review,
+                    round_number=review_number,
+                    prior_review=prior_review,
+                )
+            )
+            store.write_text(
+                "review-report.md",
+                "# Airlock 逐轮审查报告\n\n"
+                f"## 原始输入\n\n{task.strip()}\n\n"
+                + "\n".join(review_rounds),
+            )
             if review.verdict is Verdict.APPROVE:
                 transition("approved", review_number=review_number)
                 return review, store
@@ -153,6 +168,14 @@ def repair_repository(
                     "blocked",
                     review_number=review_number,
                     reason=review.summary,
+                )
+                return review, store
+
+            if all(finding.severity is Severity.LOW for finding in review.findings):
+                transition(
+                    "minor_findings",
+                    review_number=review_number,
+                    reason="Only low-severity findings remain; human acceptance required.",
                 )
                 return review, store
 

@@ -38,6 +38,15 @@ def rejection(issue: str = "value is wrong") -> ReviewResult:
     )
 
 
+def minor_rejection(issue: str = "minor naming issue") -> ReviewResult:
+    return ReviewResult(
+        Verdict.REJECT,
+        issue,
+        (Finding(Severity.LOW, issue, "file.py", 1, "consider a clearer name"),),
+        ("the behavior is correct",),
+    )
+
+
 class ReviewStore:
     def __init__(self, path: Path) -> None:
         self.artifact_path = path
@@ -159,6 +168,35 @@ def test_repair_hands_only_structured_findings_to_write_mode(
     assert state["status"] == "approved"
     assert (store.path / "iteration-01-writer.json").exists()
     assert (store.path / "iteration-02-review.json").exists()
+    report = (store.path / "review-report.md").read_text()
+    assert "## 原始输入" in report
+    assert "## 第 1 轮" in report
+    assert "## 第 2 轮" in report
+    assert "### 合理" in report
+    assert "### 不合理" in report
+    assert "### 建议" in report
+    assert "上一轮结构化审查结果" in report
+
+
+def test_repair_stops_when_only_low_severity_findings_remain(
+    monkeypatch, tmp_path: Path
+) -> None:
+    repo = repository(tmp_path)
+    reviewer = FakeReviewer([minor_rejection()])
+    writer = FakeWriter(["value = 3\n"])
+    install_reviews(monkeypatch, reviewer, tmp_path)
+
+    result, store = repair_repository(repo, "fix value", writer, reviewer, 3)
+
+    assert result.verdict is Verdict.REJECT
+    assert writer.requests == []
+    state = json.loads((store.path / "state.json").read_text())
+    assert state["status"] == "minor_findings"
+    assert "human acceptance required" in state["reason"]
+    report = (store.path / "review-report.md").read_text()
+    assert "the behavior is correct" in report
+    assert "minor naming issue" in report
+    assert "consider a clearer name" in report
 
 
 def test_repair_blocks_when_writer_makes_no_progress(monkeypatch, tmp_path: Path) -> None:

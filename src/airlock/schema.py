@@ -15,6 +15,10 @@ REVIEW_SCHEMA: dict[str, Any] = {
     "properties": {
         "verdict": {"type": "string", "enum": ["approve", "reject", "blocked"]},
         "summary": {"type": "string", "minLength": 1},
+        "reasonable": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+        },
         "findings": {
             "type": "array",
             "items": {

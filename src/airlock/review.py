@@ -50,6 +50,14 @@ security, missing tests, and violations of the stated task. Do not modify any
 file and do not suggest approval when evidence is unavailable. Return only the
 JSON object required by the supplied schema.
 
+Report rules:
+- Always include `reasonable`: concise observations about what is correct or
+  well-supported by evidence. Use an empty array when none can be established.
+- Put every unreasonable or actionable concern in `findings`.
+- Put the concrete recommended action in each finding's `suggestion`.
+- On repair verification, reassess the same original task and explicitly check
+  the prior findings against the current repository; do not review a new task.
+
 Verdict rules:
 - approve: no actionable findings remain; findings must be empty.
 - reject: at least one actionable finding exists.
@@ -68,6 +76,51 @@ Test gate evidence:
 Repair verification evidence:
 {repair_evidence}
 """
+
+
+def render_review_markdown(
+    task: str,
+    result: ReviewResult,
+    *,
+    round_number: int = 1,
+    prior_review: ReviewResult | None = None,
+) -> str:
+    """Render one review round for humans without replacing JSON evidence."""
+    input_description = "原始任务与当前仓库证据"
+    if prior_review is not None:
+        input_description += "，以及上一轮结构化审查结果"
+    lines = [
+        f"## 第 {round_number} 轮",
+        "",
+        f"- 输入：{input_description}",
+        f"- 结论：`{result.verdict.value}`",
+        f"- 摘要：{result.summary}",
+        "",
+        "### 合理",
+        "",
+    ]
+    if result.reasonable:
+        lines.extend(f"- {item}" for item in result.reasonable)
+    else:
+        lines.append("- 未提供可验证的合理项。")
+    lines.extend(["", "### 不合理", ""])
+    if result.findings:
+        for finding in result.findings:
+            location = finding.file or "repository"
+            if finding.line is not None:
+                location = f"{location}:{finding.line}"
+            lines.append(
+                f"- [{finding.severity.value.upper()}] `{location}`：{finding.issue}"
+            )
+    else:
+        lines.append("- 无。")
+    lines.extend(["", "### 建议", ""])
+    suggestions = [finding.suggestion for finding in result.findings if finding.suggestion]
+    if suggestions:
+        lines.extend(f"- {suggestion}" for suggestion in suggestions)
+    else:
+        lines.append("- 无。")
+    return "\n".join(lines) + "\n"
 
 
 def _enforce_test_gate(
@@ -136,6 +189,7 @@ def review_repository(
         )
         store.write_text("diff.patch", workspace.review_material())
         store.write_json("review.json", result.to_dict())
+        store.write_text("review.md", render_review_markdown(task, result))
         store.write_json(
             "state.json",
             {
@@ -173,6 +227,7 @@ def review_repository(
             )
             try:
                 store.write_json("review.json", result.to_dict())
+                store.write_text("review.md", render_review_markdown(task, result))
                 store.write_json(
                     "state.json",
                     {
@@ -244,6 +299,10 @@ def review_repository(
             summary=f"Reviewer unavailable: {provider_error}",
         )
         store.write_json("review.json", result.to_dict())
+        store.write_text(
+            "review.md",
+            render_review_markdown(task, result, prior_review=prior_review),
+        )
         store.write_json(
             "state.json",
             {
@@ -273,6 +332,10 @@ def review_repository(
             summary=f"Reviewer returned an invalid verdict: {exc}",
         )
         store.write_json("review.json", result.to_dict())
+        store.write_text(
+            "review.md",
+            render_review_markdown(task, result, prior_review=prior_review),
+        )
         store.write_json(
             "state.json",
             {
@@ -284,6 +347,10 @@ def review_repository(
         return result, store
     result = _enforce_test_gate(result, test_result)
     store.write_json("review.json", result.to_dict())
+    store.write_text(
+        "review.md",
+        render_review_markdown(task, result, prior_review=prior_review),
+    )
     store.write_json(
         "state.json",
         {
