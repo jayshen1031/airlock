@@ -75,6 +75,20 @@ codex --version
 You normally do not need to uninstall Airlock first. The exact update command
 depends on how that machine installed it.
 
+First identify the executable and its owning environment instead of assuming
+that `pipx` manages it:
+
+```bash
+command -v airlock
+readlink -f "$(command -v airlock)"
+pipx list
+```
+
+If `pipx list` has no Airlock entry, use the resolved executable path to locate
+its virtual environment and run that environment's `pip show airlock-agent`.
+An `Editable project location` means the installed command reads code directly
+from that directory.
+
 For a `pipx` installation made directly from GitHub, rebuild the managed
 environment from its recorded source specification:
 
@@ -83,10 +97,10 @@ pipx reinstall airlock-agent
 airlock --help
 ```
 
-Use `pipx list` if you need to confirm the installed package name or source.
-`reinstall` replaces only Airlock's isolated environment; it does not affect
-project repositories, `.airlock/runs/`, or the separately installed provider
-CLIs.
+This command applies only when the current user's `pipx list` actually contains
+`airlock-agent`. `reinstall` replaces only Airlock's isolated environment; it
+does not affect project repositories, `.airlock/runs/`, or the separately
+installed provider CLIs.
 
 For an editable contributor installation, update the checkout first. Editable
 installs use that checkout directly, while reinstalling refreshes package
@@ -109,6 +123,24 @@ python -m pip install --upgrade --editable .
 airlock --help
 ```
 
+If the editable location is an extracted archive or another static directory
+without `.git`, `git pull` cannot update it and `pip install --upgrade` will
+continue reading the stale copy. Replace that editable link with a GitHub
+installation in the same environment instead:
+
+```bash
+V="$HOME/.local/share/airlock-venv"
+"$V/bin/pip" uninstall -y airlock-agent
+"$V/bin/pip" install --upgrade --force-reinstall \
+  "git+https://github.com/jayshen1031/airlock.git"
+hash -r
+"$V/bin/airlock" --help
+```
+
+Adjust `V` to the environment revealed by the resolved executable path. Before
+deleting the old editable source directory, inspect it for project-local
+`.airlock/`, `.memhub/`, and `configs/` content that may need to be preserved.
+
 For the persistent user-owned virtual environment shown below, reinstall the
 current GitHub source into the same environment:
 
@@ -120,11 +152,22 @@ current GitHub source into the same environment:
 ```
 
 An explicit uninstall is only useful when changing installation method,
-removing an obsolete checkout, or repairing a broken environment. In those
+removing a stale editable link, or repairing a broken environment. In those
 cases, remove the old installation with `pipx uninstall airlock-agent` or the
 matching environment's `python -m pip uninstall airlock-agent`, then follow the
 installation instructions above. Do not delete project `.airlock/runs/` merely
 to upgrade the CLI.
+
+The package version may remain unchanged between unreleased Git commits, so
+`pip show airlock-agent` alone does not prove that an update succeeded. A Git
+installation records its source commit in `direct_url.json`; inspect it with
+the environment's Python and compare `vcs_info.commit_id` with the intended
+upstream commit:
+
+```bash
+"$V/bin/python" -c \
+  'import importlib.metadata as m; print(m.distribution("airlock-agent").read_text("direct_url.json"))'
+```
 
 ### Ubuntu and Debian (PEP 668)
 
