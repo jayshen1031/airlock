@@ -41,6 +41,18 @@ Requires Python 3.11+ and at least one authenticated provider CLI (`codex` or
 The primary interaction can be a natural-language request inside Codex, Claude,
 or another coding runtime. For example:
 
+中文示例：
+
+> 用 Airlock 审查当前改动，让 Claude 独立审核，并从可读报告汇总合理、不合理和建议。
+
+> 用 Airlock 修复 Issue #42：Codex 负责修改，Claude 负责独立审核，最多修复三轮；如果只剩
+> 低风险问题就停止并交给我决定。
+
+> 用 Airlock 让 Codex 和 Claude 互审这个改动。只有两个 reviewer 都真实执行成功才算互审
+> 完成；`BLOCKED` 是工具失败，不是审查意见。
+
+English examples:
+
 > Use Airlock to review the current changes with Claude as the independent
 > reviewer. Summarize the reasonable parts, unreasonable findings, and
 > suggestions from the readable report.
