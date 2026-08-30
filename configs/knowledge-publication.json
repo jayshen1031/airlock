@@ -24,7 +24,7 @@
     },
     {
       "source": "docs/adr/0001-knowledge-and-runtime-boundaries.md",
-      "target": "projects/airlock/decisions/knowledge-and-runtime-boundaries.md",
+      "target": "projects/airlock/decisions/knowledge-and-runtime-boundaries_EN.md",
       "knowledge_id": "knowledge://airlock/adr/0001-knowledge-and-runtime-boundaries",
       "knowledge_type": "architecture-decision",
       "version": "1.0.0",
