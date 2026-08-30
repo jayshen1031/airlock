@@ -15,6 +15,7 @@ def test_valid_result_round_trip() -> None:
         {
             "verdict": "reject",
             "summary": "one issue",
+            "reasonable": ["the happy path remains covered"],
             "findings": [
                 {
                     "severity": "high",
@@ -27,7 +28,20 @@ def test_valid_result_round_trip() -> None:
         }
     )
     assert result.verdict is Verdict.REJECT
+    assert result.reasonable == ("the happy path remains covered",)
     assert result.to_dict()["findings"][0]["severity"] == "high"
+
+
+def test_reasonable_observations_must_be_non_empty_strings() -> None:
+    with pytest.raises(ValueError, match="reasonable"):
+        ReviewResult.from_dict(
+            {
+                "verdict": "approve",
+                "summary": "clean",
+                "reasonable": [""],
+                "findings": [],
+            }
+        )
 
 
 @pytest.mark.parametrize(

@@ -77,15 +77,18 @@ class ReviewResult:
     verdict: Verdict
     summary: str
     findings: tuple[Finding, ...] = ()
+    reasonable: tuple[str, ...] = ()
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> ReviewResult:
         if not isinstance(value, dict):
             raise ValueError("review result must be an object")
         required = {"verdict", "summary", "findings"}
-        if set(value) != required:
+        allowed = required | {"reasonable"}
+        if not required.issubset(value) or not set(value).issubset(allowed):
             raise ValueError(
-                "review result must contain exactly verdict, summary, and findings"
+                "review result must contain exactly verdict, summary, findings, "
+                "and optional reasonable observations"
             )
         try:
             verdict = Verdict(value.get("verdict"))
@@ -102,12 +105,24 @@ class ReviewResult:
             raise ValueError("reject verdict requires at least one finding")
         if verdict is Verdict.APPROVE and findings:
             raise ValueError("approve verdict cannot include findings")
-        return cls(verdict=verdict, summary=summary.strip(), findings=findings)
+        raw_reasonable = value.get("reasonable", [])
+        if not isinstance(raw_reasonable, list) or any(
+            not isinstance(item, str) or not item.strip() for item in raw_reasonable
+        ):
+            raise ValueError("reasonable must be an array of non-empty strings")
+        reasonable = tuple(item.strip() for item in raw_reasonable)
+        return cls(
+            verdict=verdict,
+            summary=summary.strip(),
+            findings=findings,
+            reasonable=reasonable,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "verdict": self.verdict.value,
             "summary": self.summary,
+            "reasonable": list(self.reasonable),
             "findings": [
                 {
                     **asdict(finding),

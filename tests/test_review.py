@@ -16,7 +16,12 @@ from airlock.models import (
     Severity,
     Verdict,
 )
-from airlock.review import ReviewerMutationError, build_prompt, review_repository
+from airlock.review import (
+    ReviewerMutationError,
+    build_prompt,
+    render_review_markdown,
+    review_repository,
+)
 
 
 def git(repo: Path, *args: str) -> None:
@@ -105,6 +110,29 @@ def test_review_writes_auditable_result(tmp_path: Path) -> None:
     assert result.verdict is Verdict.APPROVE
     assert json.loads((store.path / "review.json").read_text())["verdict"] == "approve"
     assert json.loads((store.path / "state.json").read_text())["status"] == "approve"
+    assert "### 合理" in (store.path / "review.md").read_text()
+
+
+def test_readable_review_groups_reasonable_findings_and_suggestions() -> None:
+    result = ReviewResult(
+        Verdict.REJECT,
+        "one issue",
+        (Finding(Severity.HIGH, "state leaks", "file.py", 2, "restore state"),),
+        ("tests cover the main path",),
+    )
+
+    report = render_review_markdown(
+        "fix state",
+        result,
+        round_number=2,
+        prior_review=result,
+    )
+
+    assert "## 第 2 轮" in report
+    assert "上一轮结构化审查结果" in report
+    assert "tests cover the main path" in report
+    assert "state leaks" in report
+    assert "restore state" in report
 
 
 def test_configured_test_gate_writes_evidence_and_reaches_reviewer(
@@ -305,6 +333,8 @@ def test_repair_verification_prompt_allows_reverted_rejected_change() -> None:
     )
     prompt = build_prompt("restore add", "(no tracked diff)\n", prior_review=prior)
     assert "repair verification" in prompt
+    assert "same original task" in prompt
+    assert "restore add" in prompt
     assert "reverted a rejected change back to HEAD" in prompt
     assert "addition became subtraction" in prompt
 
