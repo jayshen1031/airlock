@@ -43,6 +43,7 @@ knowledge:
   consume: []
 governance:
   work_tracking:
+    output_language: zh-CN+en-US
     github_repository: jayshen1031/airlock
     jira_project_key: AIR
     jira_project_url: https://jayshen.atlassian.net/jira/software/projects/AIR/summary
