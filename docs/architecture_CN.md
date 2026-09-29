@@ -160,6 +160,17 @@ fingerprint 覆盖 tracked、untracked、ignored 配置和既有 `.airlock` arti
 dist 和 `*.egg-info` 明确排除。v0.1 的检测是 provider 权限限制后的第二道防线，不等同
 于 OS 级不可写挂载；需要更强对抗性隔离的环境应使用容器或未来的 OS sandbox。
 
+### Provider 瞬态故障恢复
+
+Reviewer provider 只对明确的连接中断及 HTTP 429、502、503 做重试。初次调用失败后最多
+再尝试两次，退避间隔为 1 秒、2 秒。认证、授权/权限、schema/输出解析、timeout、未知
+错误和 reviewer mutation 均视为永久失败，不得重试。
+
+每次 provider 调用写入独立的 `provider-attempt-NN.json`。失败尝试记录分类、provider
+证据、是否计划重试和退避时长；成功尝试记录命令、退出码、耗时和 stderr。退避结束后、
+下一次调用之前，controller 必须重新校验 HEAD、审查输入 diff 的 SHA-256 和完整 workspace
+fingerprint；任一不一致都终止重试并返回 `BLOCKED`。所有尝试耗尽后同样返回 `BLOCKED`。
+
 ## 5. Stuck detection
 
 满足任一条件时停止自动循环：
@@ -168,7 +179,7 @@ dist 和 `*.egg-info` 明确排除。v0.1 的检测是 provider 权限限制后�
 - 连续两轮 repository diff fingerprint 相同；
 - 连续两轮 normalized findings fingerprint 相同且 writer 没有有效进展；
 - writer 或 reviewer 报 blocked；
-- provider timeout、cancel 或无法解析输出；
+- provider 永久失败、重试耗尽、timeout、cancel 或无法解析输出；
 - test command 配置无效。
 
 停止意味着保存证据并把控制权交还用户，不意味着丢弃已有修改。

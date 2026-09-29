@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from airlock.adapters.base import AgentAdapter
+from airlock.adapters.base import AgentAdapter, ProviderError
 from airlock.models import (
     AgentRequest,
     AgentResult,
@@ -64,6 +64,20 @@ class FailingAdapter(FakeAdapter):
         raise RuntimeError("provider failed")
 
 
+class SequencedAdapter(FakeAdapter):
+    def __init__(self, outcomes: list[ProviderError | dict]) -> None:
+        super().__init__({})
+        self.outcomes = outcomes
+        self.calls = 0
+
+    def run(self, request: AgentRequest) -> AgentResult:
+        self.calls += 1
+        outcome = self.outcomes.pop(0)
+        if isinstance(outcome, ProviderError):
+            raise outcome
+        return AgentResult(json.dumps(outcome), "", 0, 0.1, ("fake",))
+
+
 class IgnoredFileMutatingAdapter(FakeAdapter):
     def run(self, request: AgentRequest) -> AgentResult:
         (request.cwd / ".env").write_text("CHANGED=1\n")
@@ -111,6 +125,13 @@ def test_review_writes_auditable_result(tmp_path: Path) -> None:
     assert json.loads((store.path / "review.json").read_text())["verdict"] == "approve"
     assert json.loads((store.path / "state.json").read_text())["status"] == "approve"
     assert "### 合理" in (store.path / "review.md").read_text()
+    attempt = json.loads((store.path / "provider-attempt-01.json").read_text())
+    assert attempt["status"] == "succeeded"
+    assert set(attempt["before"]) >= {
+        "head",
+        "diff_hash",
+        "workspace_fingerprint",
+    }
 
 
 def test_readable_review_groups_reasonable_findings_and_suggestions() -> None:
@@ -361,6 +382,185 @@ def test_provider_failure_becomes_blocked_result(tmp_path: Path) -> None:
     assert state["status"] == "blocked"
     assert state["reason"] == "provider failed"
     assert json.loads((store.path / "review.json").read_text())["verdict"] == "blocked"
+    attempt = json.loads((store.path / "provider-attempt-01.json").read_text())
+    assert attempt["error_kind"] == "permanent"
+    assert attempt["retry_scheduled"] is False
+
+
+def test_transient_provider_failures_retry_with_exponential_backoff(
+    tmp_path: Path,
+) -> None:
+    repo = repository(tmp_path)
+    adapter = SequencedAdapter(
+        [
+            ProviderError("connection reset by peer"),
+            ProviderError("HTTP 503 service unavailable"),
+            {"verdict": "approve", "summary": "clean", "findings": []},
+        ]
+    )
+    delays: list[float] = []
+
+    result, store = review_repository(
+        repo, "change value", adapter, sleep=delays.append
+    )
+
+    assert result.verdict is Verdict.APPROVE
+    assert adapter.calls == 3
+    assert delays == [1.0, 2.0]
+    attempts = [
+        json.loads(path.read_text())
+        for path in sorted(store.path.glob("provider-attempt-*.json"))
+    ]
+    assert [attempt["status"] for attempt in attempts] == [
+        "failed",
+        "failed",
+        "succeeded",
+    ]
+    assert [attempt["classification"] for attempt in attempts] == [
+        "connection_interrupted",
+        "http_503",
+        None,
+    ]
+    assert [attempt["retry_scheduled"] for attempt in attempts] == [True, True, False]
+
+
+def test_transient_provider_failure_exhaustion_is_blocked(tmp_path: Path) -> None:
+    repo = repository(tmp_path)
+    adapter = SequencedAdapter(
+        [ProviderError("HTTP 429 too many requests") for _ in range(3)]
+    )
+    delays: list[float] = []
+
+    result, store = review_repository(
+        repo, "change value", adapter, sleep=delays.append
+    )
+
+    assert result.verdict is Verdict.BLOCKED
+    assert adapter.calls == 3
+    assert delays == [1.0, 2.0]
+    assert len(list(store.path.glob("provider-attempt-*.json"))) == 3
+    final_attempt = json.loads((store.path / "provider-attempt-03.json").read_text())
+    assert final_attempt["error_kind"] == "transient"
+    assert final_attempt["retry_scheduled"] is False
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ProviderError("authentication failed with HTTP 503"),
+        ProviderError("permission denied after connection reset"),
+        ProviderError("schema validation failed"),
+        ProviderError("provider timed out", {"timed_out": True}),
+    ],
+)
+def test_permanent_provider_failures_never_retry(
+    tmp_path: Path, error: ProviderError
+) -> None:
+    repo = repository(tmp_path)
+    adapter = SequencedAdapter(
+        [error, {"verdict": "approve", "summary": "clean", "findings": []}]
+    )
+    delays: list[float] = []
+
+    result, store = review_repository(
+        repo, "change value", adapter, sleep=delays.append
+    )
+
+    assert result.verdict is Verdict.BLOCKED
+    assert adapter.calls == 1
+    assert delays == []
+    assert len(list(store.path.glob("provider-attempt-*.json"))) == 1
+
+
+def test_workspace_change_during_backoff_aborts_retry(tmp_path: Path) -> None:
+    repo = repository(tmp_path)
+    adapter = SequencedAdapter(
+        [
+            ProviderError("connection reset by peer"),
+            {"verdict": "approve", "summary": "clean", "findings": []},
+        ]
+    )
+
+    def mutate_during_backoff(_: float) -> None:
+        (repo / "file.py").write_text("changed during backoff\n")
+
+    result, store = review_repository(
+        repo, "change value", adapter, sleep=mutate_during_backoff
+    )
+
+    assert result.verdict is Verdict.BLOCKED
+    assert adapter.calls == 1
+    state = json.loads((store.path / "state.json").read_text())
+    assert "diff_hash" in state["reason"]
+    assert "workspace_fingerprint" in state["reason"]
+
+
+def test_head_change_during_backoff_aborts_retry(tmp_path: Path) -> None:
+    repo = repository(tmp_path)
+    adapter = SequencedAdapter(
+        [
+            ProviderError("HTTP 502 bad gateway"),
+            {"verdict": "approve", "summary": "clean", "findings": []},
+        ]
+    )
+
+    def commit_during_backoff(_: float) -> None:
+        git(repo, "commit", "--allow-empty", "-qm", "concurrent head change")
+
+    result, store = review_repository(
+        repo, "change value", adapter, sleep=commit_during_backoff
+    )
+
+    assert result.verdict is Verdict.BLOCKED
+    assert adapter.calls == 1
+    state = json.loads((store.path / "state.json").read_text())
+    assert "head" in state["reason"]
+
+
+def test_non_diff_workspace_change_during_backoff_aborts_retry(
+    tmp_path: Path,
+) -> None:
+    repo = repository(tmp_path)
+    (repo / ".gitignore").write_text("*.env\n")
+    git(repo, "add", ".gitignore")
+    git(repo, "commit", "-qm", "ignore env")
+    adapter = SequencedAdapter(
+        [
+            ProviderError("server disconnected"),
+            {"verdict": "approve", "summary": "clean", "findings": []},
+        ]
+    )
+
+    def mutate_ignored_file(_: float) -> None:
+        (repo / "local.env").write_text("changed\n")
+
+    result, store = review_repository(
+        repo, "change value", adapter, sleep=mutate_ignored_file
+    )
+
+    assert result.verdict is Verdict.BLOCKED
+    assert adapter.calls == 1
+    state = json.loads((store.path / "state.json").read_text())
+    assert "workspace_fingerprint" in state["reason"]
+    assert "diff_hash" not in state["reason"]
+
+
+def test_malformed_output_is_not_retried(tmp_path: Path) -> None:
+    repo = repository(tmp_path)
+    adapter = SequencedAdapter(
+        [
+            {},
+            {"verdict": "approve", "summary": "clean", "findings": []},
+        ]
+    )
+
+    result, store = review_repository(
+        repo, "change value", adapter, sleep=lambda _: pytest.fail("unexpected retry")
+    )
+
+    assert result.verdict is Verdict.BLOCKED
+    assert adapter.calls == 1
+    assert len(list(store.path.glob("provider-attempt-*.json"))) == 1
 
 
 def test_malformed_output_becomes_blocked_result(tmp_path: Path) -> None:
