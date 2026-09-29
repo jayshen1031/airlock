@@ -1,9 +1,13 @@
 import json
 from pathlib import Path
 
+import pytest
+
+from airlock.adapters.base import ProviderError
 from airlock.adapters.claude import ClaudeAdapter
 from airlock.adapters.codex import CodexAdapter
 from airlock.models import AgentMode, AgentRequest
+from airlock.provider_errors import ProviderErrorKind, classify_provider_error
 
 
 def request(tmp_path: Path) -> AgentRequest:
@@ -48,3 +52,47 @@ def test_claude_write_mode_has_explicit_local_tools(tmp_path: Path) -> None:
     assert "--json-schema" not in command
     assert "--dangerously-skip-permissions" not in command
     assert "Bash" not in command
+
+
+@pytest.mark.parametrize(
+    ("message", "classification"),
+    [
+        ("HTTP 429: too many requests", "http_429"),
+        ("response status code 502", "http_502"),
+        ("HTTP/1.1 503 service unavailable", "http_503"),
+        ("connection reset by peer", "connection_interrupted"),
+        ("broken pipe while reading response", "connection_interrupted"),
+    ],
+)
+def test_provider_error_retry_allowlist(message: str, classification: str) -> None:
+    error = ProviderError(message)
+    kind, actual_classification = classify_provider_error(error)
+    assert kind is ProviderErrorKind.TRANSIENT
+    assert actual_classification == classification
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "authentication failed with HTTP 503",
+        "permission denied after connection reset",
+        "schema validation failed",
+        "HTTP 500 internal server error",
+        "HTTP 504 gateway timeout",
+        "unexpected provider failure",
+    ],
+)
+def test_provider_error_denies_non_allowlisted_failures(message: str) -> None:
+    error = ProviderError(message)
+    kind, _ = classify_provider_error(error)
+    assert kind is ProviderErrorKind.PERMANENT
+
+
+def test_provider_timeout_is_permanent_even_with_retryable_status() -> None:
+    error = ProviderError(
+        "HTTP 503 after timeout",
+        {"timed_out": True, "stderr": "HTTP 503", "error": "timed out"},
+    )
+    kind, classification = classify_provider_error(error)
+    assert kind is ProviderErrorKind.PERMANENT
+    assert classification == "timeout"

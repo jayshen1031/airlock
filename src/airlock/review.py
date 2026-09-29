@@ -2,12 +2,23 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
+import time
+from typing import Callable
 
-from airlock.adapters.base import AgentAdapter
+from airlock.adapters.base import AgentAdapter, ProviderError
 from airlock.git_workspace import GitWorkspace, GitWorkspaceError
-from airlock.models import AgentRequest, Finding, ReviewResult, Severity, Verdict
+from airlock.models import (
+    AgentRequest,
+    AgentResult,
+    Finding,
+    ReviewResult,
+    Severity,
+    Verdict,
+)
+from airlock.provider_errors import ProviderErrorKind, classify_provider_error
 from airlock.run_store import RunStore, RunStoreIntegrityError
 from airlock.schema import REVIEW_SCHEMA, parse_review_json
 from airlock.test_gate import TestResult, load_test_gate, run_test_gate
@@ -15,6 +26,71 @@ from airlock.test_gate import TestResult, load_test_gate, run_test_gate
 
 class ReviewerMutationError(RuntimeError):
     pass
+
+
+MAX_PROVIDER_ATTEMPTS = 3
+INITIAL_RETRY_DELAY_SECONDS = 1.0
+
+
+def _workspace_retry_identity(workspace: GitWorkspace) -> dict[str, str]:
+    material = workspace.review_material()
+    snapshot = workspace.snapshot()
+    return {
+        "head": workspace.head(),
+        "diff_hash": hashlib.sha256(material.encode("utf-8")).hexdigest(),
+        "workspace_fingerprint": snapshot.fingerprint,
+        "revision_identity": workspace.revision_identity(),
+    }
+
+
+def _provider_attempt_evidence(
+    *,
+    attempt: int,
+    before: dict[str, str],
+    after: dict[str, str],
+    provider_result: AgentResult | None = None,
+    provider_error: BaseException | None = None,
+    retry_scheduled: bool = False,
+    backoff_seconds: float | None = None,
+) -> dict[str, object]:
+    evidence: dict[str, object] = {
+        "attempt": attempt,
+        "before": before,
+        "after": after,
+        "retry_scheduled": retry_scheduled,
+        "backoff_seconds": backoff_seconds,
+    }
+    if provider_error is not None:
+        kind, classification = classify_provider_error(provider_error)
+        provider_evidence = (
+            provider_error.evidence
+            if isinstance(provider_error, ProviderError)
+            else {"error": str(provider_error)}
+        )
+        evidence.update(
+            {
+                "status": "failed",
+                "error_kind": kind.value,
+                "classification": classification,
+                "provider": provider_evidence,
+            }
+        )
+        return evidence
+    assert provider_result is not None
+    evidence.update(
+        {
+            "status": "succeeded",
+            "error_kind": None,
+            "classification": None,
+            "provider": {
+                "command": list(provider_result.command),
+                "exit_code": provider_result.exit_code,
+                "duration_seconds": provider_result.duration_seconds,
+                "stderr": provider_result.stderr,
+            },
+        }
+    )
+    return evidence
 
 
 def build_prompt(
@@ -176,6 +252,7 @@ def review_repository(
     adapter: AgentAdapter,
     timeout_seconds: float = 600,
     prior_review: ReviewResult | None = None,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> tuple[ReviewResult, RunStore]:
     workspace = GitWorkspace(repository)
     store = RunStore(workspace.root)
@@ -255,44 +332,103 @@ def review_repository(
         },
     )
 
-    before = workspace.snapshot()
-    before_revision = workspace.revision_identity()
     provider_result = None
-    provider_error: Exception | None = None
-    try:
-        provider_result = adapter.run(
-            AgentRequest(
-                prompt=prompt,
-                cwd=workspace.root,
-                schema_path=schema_path,
-                timeout_seconds=timeout_seconds,
-            )
-        )
-    except Exception as exc:
-        provider_error = exc
-    finally:
-        after = workspace.snapshot()
-        after_revision = workspace.revision_identity()
-    if (
-        before.fingerprint != after.fingerprint
-        or before_revision != after_revision
-    ):
-        failure = {
-            "run_id": store.run_id,
-            "status": "failed",
-            "reason": "reviewer mutated the workspace",
-        }
-        recovery_path = None
+    provider_error: BaseException | None = None
+    retry_identity: dict[str, str] | None = None
+    for attempt in range(1, MAX_PROVIDER_ATTEMPTS + 1):
+        if retry_identity is not None:
+            current_identity = _workspace_retry_identity(workspace)
+            if current_identity != retry_identity:
+                changed = sorted(
+                    key
+                    for key, expected in retry_identity.items()
+                    if current_identity.get(key) != expected
+                )
+                provider_error = RuntimeError(
+                    "workspace changed before provider retry "
+                    f"({', '.join(changed)}); retry aborted"
+                )
+                break
+        before = _workspace_retry_identity(workspace)
+        provider_result = None
+        provider_error = None
         try:
-            store.write_json("state.json", failure)
-        except RunStoreIntegrityError:
-            recovery_path = store.write_recovery_json(failure)
-        detail = "reviewer changed the workspace; Airlock left the changes intact"
-        if recovery_path is not None:
-            detail += f"; recovery artifact: {recovery_path}"
-        raise ReviewerMutationError(
-            detail
-        ) from provider_error
+            provider_result = adapter.run(
+                AgentRequest(
+                    prompt=prompt,
+                    cwd=workspace.root,
+                    schema_path=schema_path,
+                    timeout_seconds=timeout_seconds,
+                )
+            )
+        except Exception as exc:
+            provider_error = exc
+        except KeyboardInterrupt as exc:
+            provider_error = exc
+        after = _workspace_retry_identity(workspace)
+        if before != after:
+            failure = {
+                "run_id": store.run_id,
+                "status": "failed",
+                "reason": "reviewer mutated the workspace",
+            }
+            recovery_path = None
+            attempt_evidence = _provider_attempt_evidence(
+                attempt=attempt,
+                before=before,
+                after=after,
+                provider_result=provider_result,
+                provider_error=provider_error,
+            )
+            try:
+                store.write_json(f"provider-attempt-{attempt:02d}.json", attempt_evidence)
+                store.write_json("state.json", failure)
+            except RunStoreIntegrityError:
+                recovery_path = store.write_recovery_json(
+                    {**failure, "provider_attempt": attempt_evidence}
+                )
+            detail = "reviewer changed the workspace; Airlock left the changes intact"
+            if recovery_path is not None:
+                detail += f"; recovery artifact: {recovery_path}"
+            raise ReviewerMutationError(detail) from provider_error
+        if isinstance(provider_error, KeyboardInterrupt):
+            store.write_json(
+                f"provider-attempt-{attempt:02d}.json",
+                _provider_attempt_evidence(
+                    attempt=attempt,
+                    before=before,
+                    after=after,
+                    provider_error=provider_error,
+                ),
+            )
+            raise provider_error
+        retryable = (
+            provider_error is not None
+            and classify_provider_error(provider_error)[0]
+            is ProviderErrorKind.TRANSIENT
+        )
+        retry_scheduled = retryable and attempt < MAX_PROVIDER_ATTEMPTS
+        backoff_seconds = (
+            INITIAL_RETRY_DELAY_SECONDS * (2 ** (attempt - 1))
+            if retry_scheduled
+            else None
+        )
+        store.write_json(
+            f"provider-attempt-{attempt:02d}.json",
+            _provider_attempt_evidence(
+                attempt=attempt,
+                before=before,
+                after=after,
+                provider_result=provider_result,
+                provider_error=provider_error,
+                retry_scheduled=retry_scheduled,
+                backoff_seconds=backoff_seconds,
+            ),
+        )
+        if provider_error is None or not retry_scheduled:
+            break
+        retry_identity = _workspace_retry_identity(workspace)
+        sleep(backoff_seconds)
     if provider_error is not None:
         result = ReviewResult(
             verdict=Verdict.BLOCKED,

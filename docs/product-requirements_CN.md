@@ -147,6 +147,9 @@ reviewer 必须输出：
 - severity 为 `critical | high | medium | low`；
 - file 和 line 允许在无法精确定位时为空，但 issue 必须可执行；
 - schema 校验失败视为 provider failure，不得默认为 approve。
+- Provider 仅可对连接中断和 HTTP 429、502、503 最多重试两次；每次尝试必须单独审计，
+  且重试前 HEAD、diff hash、workspace fingerprint 必须保持不变。认证、权限、schema、
+  timeout、reviewer mutation 和未知错误不得重试，最终失败必须为 `blocked`。
 
 ## 8. 验收标准
 
