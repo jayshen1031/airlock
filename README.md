@@ -1,400 +1,66 @@
 # Airlock
 
-**Keep the terminals. Remove the copy-paste.**
+在现有 AI coding runtime 中，让另一个 Agent 独立审核代码；需要时，再进行有轮数上限的修复。
+任务、Git 改动和审核结果通过本地文件交接，不传递聊天历史。
 
-Airlock is a terminal-first execution layer for cross-agent coding review. A
-developer can ask their current Codex, Claude, or other coding runtime to use
-Airlock in natural language; the runtime invokes Airlock's auditable CLI, which
-lets one agent implement a change and another independently review the Git diff
-through a bounded repair loop.
+## 开始使用
 
-Airlock is not a general multi-agent framework. Git is the shared memory, the
-reviewer is read-only, and the developer stays in control from their existing
-AI coding runtime or terminal workflow.
+需要 Python 3.11+、Git，以及已安装并登录、可在 runtime 的终端中调用的审核 CLI（`claude` 或 `codex`）。
+当前 AI runtime 需要能读取本地文件并执行终端命令。
 
-## Project independence
+**1. 把 Airlock clone 到项目旁边，首次安装命令。**
 
-Airlock is an independent open-source project. It is not affiliated with,
-endorsed by, sponsored by, or officially connected to Anthropic, OpenAI,
-Google, or any other agent-provider vendor. Claude, Claude Code, Codex, Gemini,
-and other product names and trademarks belong to their respective owners.
+```bash
+# 在 your-project 的上一级目录执行
+git clone https://github.com/jayshen1031/airlock.git
+pipx install --editable ./airlock
+airlock --help
+```
 
-Airlock invokes provider CLIs that users install and configure separately. It
-does not redistribute those CLIs, grant access to their services, or replace
-their licenses, terms, subscriptions, or acceptable-use policies.
-
-## Review and repair workflows
+目录结构：
 
 ```text
-writer changes the repository
-  -> airlock captures tracked, staged, and untracked changes
-  -> an independent reviewer inspects them in read-only mode
-  -> approve / reject with findings / blocked
-  -> local, inspectable run artifacts
+workspace/
+├── your-project/    # 要审核的 Git 仓库
+└── airlock/         # Airlock 工具
 ```
 
-Requires Python 3.11+ and at least one authenticated provider CLI (`codex` or
-`claude`) on `PATH`.
+若没有 `pipx`，或需使用虚拟环境，见[安装说明](docs/usage.md#installation)。
+同级目录便于 runtime 找到工具，也可以放在其他位置并提供实际路径。
 
-## Use Airlock from an AI coding runtime
+**2. 在目标项目的 AI runtime 中说：**
 
-The primary interaction can be a natural-language request inside Codex, Claude,
-or another coding runtime. For example:
+> 用 Airlock 审核当前未提交的改动。工具在 `../airlock`，先读它的 README，
+> 再调用 `airlock review`，让 Claude 独立审核；按报告汇总合理、不合理和建议。
 
-中文示例：
+也可以将 Claude 换成 Codex；通常选择与当前写代码的 Agent 不同的审核方。
+首次说明路径后，后续可以直接说「用 Airlock 审核」。
 
-> 用 Airlock 审查当前改动，让 Claude 独立审核，并从可读报告汇总合理、不合理和建议。
+若希望同时修复，请明确授权：
 
-> 用 Airlock 修复 Issue #42：Codex 负责修改，Claude 负责独立审核，最多修复三轮；如果只剩
-> 低风险问题就停止并交给我决定。
+> 用 Airlock 审核并修复当前改动，Codex 修改、Claude 审核，最多修复三轮。
 
-> 用 Airlock 让 Codex 和 Claude 互审这个改动。只有两个 reviewer 都真实执行成功才算互审
-> 完成；`BLOCKED` 是工具失败，不是审查意见。
+## Runtime 执行约定
 
-English examples:
+- 在**目标项目**中执行 Airlock；也可以用 `--cwd /path/to/your-project` 指定仓库。
+  默认审核已暂存、未暂存和未跟踪的当前改动，不是整库审计或已提交历史审核。
+- 自然语言请求由当前 runtime 转成 CLI 调用，不会因 clone 而自动注册 skill 或集成。
+  必须实际执行审核，再读取报告；仅给出口头意见不算 Airlock 审核。
+- 审核方只读；仅授权审核时，不得自动启动修复。
+  修复有轮数上限，只剩低风险问题时停下来交给用户决定。
+- `BLOCKED`、超时、无效输出、执行失败或检测到审核方写入，都不能算通过。
+  要求双方互审时，应分别执行两次审核；只有两方都成功执行才算完成。
+- Airlock 不自动 commit、push、merge、reset 或扩大 provider 权限。
 
-> Use Airlock to review the current changes with Claude as the independent
-> reviewer. Summarize the reasonable parts, unreasonable findings, and
-> suggestions from the readable report.
+审核报告保存在目标项目的 `.airlock/runs/<run-id>/review.md`；修复汇总为 `review-report.md`。
+这些本地审计文件不应提交到 Git。测试门禁、退出码、更新和排障见[详细用法](docs/usage.md)。
 
-> Use Airlock to run a bounded repair loop for issue #42. Use Codex as writer,
-> Claude as reviewer, allow at most three repairs, and stop for my decision if
-> only low-severity findings remain.
+## 更多
 
-> Use Airlock to cross-review this change with Codex and Claude. Do not call it
-> complete unless both reviewers actually run successfully; a blocked provider
-> is a tool failure, not a review opinion.
+- [产品需求](docs/product-requirements_CN.md) · [架构](docs/architecture_CN.md)
+- [知识与运行时边界](docs/adr/0001-knowledge-and-runtime-boundaries.md)：独立运行无需 MemHub/Nexus。
 
-The current runtime should translate that request into an explicit
-`airlock review` or `airlock repair` invocation, preserve the user's task text,
-and read `review.md` or `review-report.md` back to the user. It must not:
+Airlock 是独立开源项目，与 Anthropic、OpenAI、Google 等厂商无官方关联。
+Provider CLI 需自行安装、配置并遵守其许可与服务条款；相关商标归各自所有者。
 
-- silently expand a review request into an authorized repair;
-- reuse the current conversation as the independent reviewer's hidden context;
-- treat `BLOCKED`, malformed output, timeout, or provider failure as approval;
-- claim a cross-review completed when any requested reviewer did not execute;
-- commit, push, merge, reset, or broaden provider permissions on Airlock's
-  behalf.
-
-The CLI remains the stable execution protocol for auditability, CI, scripting,
-and runtimes that need an exact handoff boundary. Users may still invoke it
-directly when that is more convenient.
-
-## Installation
-
-Install directly from GitHub with `pipx`:
-
-```bash
-pipx install "git+https://github.com/jayshen1031/airlock.git"
-```
-
-For an editable contributor installation, clone the repository and use the
-current directory. This is portable across paths and machines:
-
-```bash
-git clone https://github.com/jayshen1031/airlock.git
-cd airlock
-pipx install --editable .
-```
-
-Without `pipx`, use a virtual environment:
-
-```bash
-git clone https://github.com/jayshen1031/airlock.git
-cd airlock
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install --editable .
-```
-
-On Windows, activate the environment with `.venv\Scripts\activate` instead.
-Confirm Airlock and the provider CLIs are available:
-
-```bash
-airlock --help
-claude --version
-codex --version
-```
-
-## Updating an existing installation
-
-You normally do not need to uninstall Airlock first. The exact update command
-depends on how that machine installed it.
-
-First identify the executable and its owning environment instead of assuming
-that `pipx` manages it:
-
-```bash
-command -v airlock
-readlink -f "$(command -v airlock)"
-pipx list
-```
-
-If `pipx list` has no Airlock entry, use the resolved executable path to locate
-its virtual environment and run that environment's `pip show airlock-agent`.
-An `Editable project location` means the installed command reads code directly
-from that directory.
-
-For a `pipx` installation made directly from GitHub, rebuild the managed
-environment from its recorded source specification:
-
-```bash
-pipx reinstall airlock-agent
-airlock --help
-```
-
-This command applies only when the current user's `pipx list` actually contains
-`airlock-agent`. `reinstall` replaces only Airlock's isolated environment; it
-does not affect project repositories, `.airlock/runs/`, or the separately
-installed provider CLIs.
-
-For an editable contributor installation, update the checkout first. Editable
-installs use that checkout directly, while reinstalling refreshes package
-metadata and dependencies:
-
-```bash
-cd /absolute/path/to/airlock
-git pull --rebase
-pipx install --force --editable .
-airlock --help
-```
-
-For an editable virtual-environment installation:
-
-```bash
-cd /absolute/path/to/airlock
-git pull --rebase
-. .venv/bin/activate
-python -m pip install --upgrade --editable .
-airlock --help
-```
-
-If the editable location is an extracted archive or another static directory
-without `.git`, `git pull` cannot update it and `pip install --upgrade` will
-continue reading the stale copy. Replace that editable link with a GitHub
-installation in the same environment instead:
-
-```bash
-V="$HOME/.local/share/airlock-venv"
-"$V/bin/pip" uninstall -y airlock-agent
-"$V/bin/pip" install --upgrade --force-reinstall \
-  "git+https://github.com/jayshen1031/airlock.git"
-hash -r
-"$V/bin/airlock" --help
-```
-
-Adjust `V` to the environment revealed by the resolved executable path. Before
-deleting the old editable source directory, inspect it for project-local
-`.airlock/`, `.memhub/`, and `configs/` content that may need to be preserved.
-
-For the persistent user-owned virtual environment shown below, reinstall the
-current GitHub source into the same environment:
-
-```bash
-"$HOME/.local/share/airlock-venv/bin/pip" install \
-  --upgrade --force-reinstall \
-  "git+https://github.com/jayshen1031/airlock.git"
-"$HOME/.local/share/airlock-venv/bin/airlock" --help
-```
-
-An explicit uninstall is only useful when changing installation method,
-removing a stale editable link, or repairing a broken environment. In those
-cases, remove the old installation with `pipx uninstall airlock-agent` or the
-matching environment's `python -m pip uninstall airlock-agent`, then follow the
-installation instructions above. Do not delete project `.airlock/runs/` merely
-to upgrade the CLI.
-
-The package version may remain unchanged between unreleased Git commits, so
-`pip show airlock-agent` alone does not prove that an update succeeded. A Git
-installation records its source commit in `direct_url.json`; inspect it with
-the environment's Python and compare `vcs_info.commit_id` with the intended
-upstream commit:
-
-```bash
-"$V/bin/python" -c \
-  'import importlib.metadata as m; print(m.distribution("airlock-agent").read_text("direct_url.json"))'
-```
-
-### Ubuntu and Debian (PEP 668)
-
-Recent Ubuntu and Debian releases may reject a system-level `pip install` with
-an `externally-managed-environment` error. Do not work around this with
-`--break-system-packages`; install Airlock as an isolated application instead.
-
-When `sudo` is available:
-
-```bash
-sudo apt update
-sudo apt install -y pipx
-pipx ensurepath
-```
-
-Start a new login shell, then install Airlock:
-
-```bash
-pipx install "git+https://github.com/jayshen1031/airlock.git"
-```
-
-Without `sudo`, create a persistent user-owned virtual environment (Python's
-`venv` module must already be available):
-
-```bash
-python3 -m venv "$HOME/.local/share/airlock-venv"
-"$HOME/.local/share/airlock-venv/bin/pip" install \
-  "git+https://github.com/jayshen1031/airlock.git"
-```
-
-Add its executable directory to your shell profile (for example, `~/.bashrc`
-or `~/.profile`) and start a new login shell:
-
-```bash
-export PATH="$HOME/.local/share/airlock-venv/bin:$PATH"
-```
-
-Both approaches persist across SSH sessions without modifying the operating
-system's managed Python environment.
-
-## Direct CLI usage
-
-Run Airlock from the Git repository you want to review, not from the Airlock
-source directory:
-
-```bash
-cd your-project
-
-airlock review \
-  --reviewer claude \
-  --task "Refactor authentication without changing token semantics"
-```
-
-Use Codex as the independent reviewer instead:
-
-```bash
-airlock review --reviewer codex --task "Fix issue #42"
-```
-
-After installing or updating Airlock, smoke-test the Codex structured-output
-path from a Git repository:
-
-```bash
-airlock review \
-  --reviewer codex \
-  --task "Smoke-test the Codex reviewer. Report the current changes accurately."
-```
-
-A successful invocation prints its artifact directory and readable report
-path. A clean workspace can legitimately produce an approval with no findings:
-
-```text
-APPROVE
-No reviewable uncommitted changes are present.
-Artifacts: /path/to/project/.airlock/runs/<run-id>
-Readable report: /path/to/project/.airlock/runs/<run-id>/review.md
-```
-
-The human-readable `review.md` groups the result as:
-
-```markdown
-### 合理
-- Evidence-backed behavior that is correct.
-
-### 不合理
-- [HIGH] `src/example.py:42`: An actionable problem.
-
-### 建议
-- The concrete recommended repair.
-```
-
-The same verdict remains available for automation in `review.json`:
-
-```json
-{
-  "verdict": "approve",
-  "summary": "No reviewable uncommitted changes are present.",
-  "reasonable": ["The tracked and staged diffs are empty."],
-  "findings": []
-}
-```
-
-If Codex fails before review with `invalid_json_schema` and reports that
-`reasonable` is missing from `required`, the machine is running a stale Airlock
-build. Follow the update-source diagnosis above, reinstall from the current
-GitHub source, and rerun the smoke test. A provider failure is `BLOCKED`; it is
-not a review conclusion and must not be treated as one side of a completed
-cross-review.
-
-Run an explicitly authorized, bounded repair loop:
-
-```bash
-airlock repair \
-  --writer codex \
-  --reviewer claude \
-  --max-iterations 3 \
-  --task "Fix issue #42 without changing the public API"
-```
-
-Airlock reviews first, passes only structured findings to the writer, then
-re-runs the configured test gate and independent review. It stops on approval,
-when only low-severity findings remain, provider blockage, repeated findings,
-no workspace progress, a repeated prior workspace state, forbidden Git revision
-changes, or the iteration limit. Low-only findings produce a `minor_findings`
-state and exit code `1`; they are not silently converted to approval. Airlock
-never commits, pushes, merges, resets, or attaches to existing terminal panes.
-
-To run one explicit test command before review, commit `.airlock/config.toml`:
-
-```toml
-[gates.tests]
-command = ["python", "-m", "pytest", "-q"]
-timeout_seconds = 300
-```
-
-The command is executed directly without a shell, is terminated at the timeout,
-and its bounded stdout/stderr are stored in `test-result.json` and supplied to
-the reviewer. A failed test can never produce approval; timeout or launch
-failure produces a blocked result. If the command changes auditable workspace
-state, Airlock leaves the changes intact and blocks before reviewer invocation.
-Malformed gate configuration also produces an auditable blocked result. If the
-file is absent, Airlock retains the review-only workflow.
-
-Configuration is limited to 64 KiB, and `timeout_seconds` must not exceed 3600.
-
-Exit codes are stable for scripting:
-
-- `0`: approved;
-- `1`: rejected with actionable findings;
-- `2`: blocked, including provider failure or malformed output;
-- `3`: Airlock/Git error or detected reviewer workspace mutation.
-
-Each invocation writes task, captured change material, schema, state, provider
-metadata, and the validated verdict under `.airlock/runs/<run-id>/`. These run
-artifacts are local and ignored by Git. A single review includes `review.md`.
-A repair run also includes `review-report.md`, which preserves the original
-input and presents every round as `合理`, `不合理`, and `建议`. The JSON files
-remain the machine-readable audit source.
-
-Airlock does not attach to existing terminal panes or run an unbounded autonomous
-loop. Cross-process resume and external cancellation remain follow-up work;
-interrupting the synchronous command records a canceled state.
-
-## Product principles
-
-- Preserve the user's iTerm2 or terminal layout.
-- Automate handoff, not judgment or final authority.
-- Pass task artifacts, diffs, tests, and findings; do not copy conversations.
-- Keep reviewers read-only and independently prompted.
-- Make every iteration visible, resumable, and bounded.
-- Start with Claude Code and Codex CLI; add providers only when demanded.
-
-## Design and knowledge boundaries
-
-The product requirements and architecture are defined in
-[`docs/product-requirements_CN.md`](docs/product-requirements_CN.md) and
-[`docs/architecture_CN.md`](docs/architecture_CN.md). The repository is the
-source of truth for code and project decisions; ADR 0001 defines how optional
-MemHub/Nexus knowledge governance remains outside the standalone runtime.
-
-## License
-
-Licensed under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for
-project attribution. This repository does not provide legal advice.
+采用 [Apache License 2.0](LICENSE)，项目归属见 [NOTICE](NOTICE)。
