@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from airlock.adapters import ClaudeAdapter, CodexAdapter, ProviderError
+from airlock.adapters import AgyAdapter, ClaudeAdapter, CodexAdapter, ProviderError
 from airlock.git_workspace import GitWorkspaceError
 from airlock.models import ReviewResult, Verdict
 from airlock.repair import repair_repository
@@ -26,7 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
     review = subcommands.add_parser("review", help="review current Git changes")
-    review.add_argument("--reviewer", choices=("claude", "codex"), required=True)
+    review.add_argument("--reviewer", choices=("claude", "codex", "agy"), required=True)
     review.add_argument(
         "--task",
         default="Review the current repository changes.",
@@ -37,8 +37,8 @@ def build_parser() -> argparse.ArgumentParser:
     repair = subcommands.add_parser(
         "repair", help="review and run a bounded findings-driven repair loop"
     )
-    repair.add_argument("--writer", choices=("claude", "codex"), required=True)
-    repair.add_argument("--reviewer", choices=("claude", "codex"), required=True)
+    repair.add_argument("--writer", choices=("claude", "codex", "agy"), required=True)
+    repair.add_argument("--reviewer", choices=("claude", "codex", "agy"), required=True)
     repair.add_argument("--task", required=True)
     repair.add_argument("--cwd", type=Path, default=Path.cwd())
     repair.add_argument("--timeout", type=float, default=600)
@@ -66,7 +66,7 @@ def _print_result(result: ReviewResult, run_path: Path) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    adapters = {"claude": ClaudeAdapter, "codex": CodexAdapter}
+    adapters = {"claude": ClaudeAdapter, "codex": CodexAdapter, "agy": AgyAdapter}
     try:
         if args.command == "review":
             result, store = review_repository(

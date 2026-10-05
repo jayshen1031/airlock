@@ -37,6 +37,7 @@ Confirm Airlock and the provider CLIs are available:
 airlock --help
 claude --version
 codex --version
+agy --help
 ```
 
 ## Updating an existing installation
@@ -195,6 +196,41 @@ Use Codex as the independent reviewer instead:
 ```bash
 airlock review --reviewer codex --task "Fix issue #42"
 ```
+
+Use Antigravity CLI as reviewer or writer:
+
+```bash
+airlock review --reviewer agy --task "Fix issue #42"
+airlock repair --writer agy --reviewer claude --max-iterations 3 --task "Fix issue #42"
+airlock repair --writer codex --reviewer agy --max-iterations 3 --task "Fix issue #42"
+```
+
+Install and authenticate `agy` separately following the
+[Antigravity CLI guide](https://antigravity.google/docs/cli/installation/).
+Airlock starts each agy invocation in a fresh temporary workspace with a
+`PreToolUse` capability hook and adds the target repository with `--add-dir`.
+The reviewer permits only `view_file`, `grep_search`, and `list_dir`; the writer
+additionally permits `replace_file_content`, `multi_replace_file_content`, and
+`write_to_file`. File paths must resolve inside the target repository, and writer
+edits to `.git` and `.airlock` are denied. All shell, MCP, browser, subagent,
+permission-expansion, and unknown tools are denied before execution. Existing
+provider permission rules still apply to permitted file tools.
+The side-effect-free `finish` control tool remains available to submit the
+structured result.
+
+The hooks are temporary and do not change your repository or global provider
+permissions. Airlock verifies hook activation and blocks results after any
+forbidden tool attempt. Install a CLI version supporting workspace hooks; missing
+hook activation blocks the run. Airlock never resumes an existing agy
+conversation or selects a different model. See
+[Antigravity hooks](https://antigravity.google/docs/hooks/).
+
+The agy adapter requires a `SUCCESS` JSON envelope and structured review output.
+Failures, missing output, and other terminal statuses block the run even if the
+CLI exits zero. The existing schema validation and reviewer mutation checks
+still apply. `--mode plan` alone does not enforce a read-only toolset, and
+`--sandbox` alone permits workspace writes; Airlock uses a tool capability hook.
+See [headless output and permissions](https://antigravity.google/docs/cli/headless/).
 
 After installing or updating Airlock, smoke-test the Codex structured-output
 path from a Git repository:
