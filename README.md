@@ -5,7 +5,8 @@
 
 ## 开始使用
 
-需要 Python 3.11+、Git，以及已安装并登录、可在 runtime 的终端中调用的审核 CLI（`claude` 或 `codex`）。
+支持在 Codex、Claude Code 和 Antigravity（`agy`）AI runtime 中使用。
+需要 Python 3.11+、Git，以及已安装并登录、可在 runtime 的终端中调用的审核 CLI（`claude`、`codex` 或 `agy`）。
 当前 AI runtime 需要能读取本地文件并执行终端命令。
 
 **1. 把 Airlock clone 到项目旁边，首次安装命令。**
@@ -33,12 +34,19 @@ workspace/
 > 用 Airlock 审核当前未提交的改动。工具在 `../airlock`，先读它的 README，
 > 再调用 `airlock review`，让 Claude 独立审核；按报告汇总合理、不合理和建议。
 
-也可以将 Claude 换成 Codex；通常选择与当前写代码的 Agent 不同的审核方。
+也可以将 Claude 换成 Codex 或 Antigravity（`agy`）；通常选择与当前写代码的 Agent 不同的审核方。
 首次说明路径后，后续可以直接说「用 Airlock 审核」。
 
 若希望同时修复，请明确授权：
 
 > 用 Airlock 审核并修复当前改动，Codex 修改、Claude 审核，最多修复三轮。
+
+例如，让 agy 审核，或让 agy 根据 Codex 的报告修复：
+
+```bash
+airlock review --reviewer agy --task "审核当前改动"
+airlock repair --writer agy --reviewer codex --max-iterations 3 --task "修复当前改动中的问题"
+```
 
 ## Runtime 执行约定
 
