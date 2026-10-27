@@ -10,6 +10,12 @@ from abc import ABC, abstractmethod
 from airlock.models import AgentRequest, AgentResult
 
 
+def _timeout_output(value: str | bytes | None) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value or ""
+
+
 class ProviderError(RuntimeError):
     def __init__(self, message: str, evidence: dict[str, object] | None = None) -> None:
         super().__init__(message)
@@ -64,8 +70,8 @@ class AgentAdapter(ABC):
                     "exit_code": None,
                     "duration_seconds": duration,
                     "timed_out": True,
-                    "stderr": exc.stderr or "",
-                    "output": exc.stdout or "",
+                    "stderr": _timeout_output(exc.stderr),
+                    "output": _timeout_output(exc.stdout),
                     "error": message,
                 },
             ) from exc
