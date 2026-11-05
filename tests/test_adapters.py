@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import subprocess
 
 import pytest
 
@@ -52,6 +53,28 @@ def test_claude_write_mode_has_explicit_local_tools(tmp_path: Path) -> None:
     assert "--json-schema" not in command
     assert "--dangerously-skip-permissions" not in command
     assert "Bash" not in command
+
+
+def test_provider_timeout_evidence_decodes_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    adapter = CodexAdapter()
+    monkeypatch.setattr(adapter, "available", lambda: True)
+
+    def timeout(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(
+            ["codex"], 10, output=b"partial\xff", stderr=b"timeout\xfe"
+        )
+
+    monkeypatch.setattr(subprocess, "run", timeout)
+
+    with pytest.raises(ProviderError) as raised:
+        adapter.run(request(tmp_path))
+
+    evidence = raised.value.evidence
+    assert evidence["output"] == "partial\ufffd"
+    assert evidence["stderr"] == "timeout\ufffd"
+    assert json.loads(json.dumps(evidence))["timed_out"] is True
 
 
 @pytest.mark.parametrize(
